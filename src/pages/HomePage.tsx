@@ -116,8 +116,9 @@ export function HomePage(): React.ReactElement {
         <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
           <b>三回合兩勝制</b>：每一回合分數<b>歸零重新計算</b>，先贏得 2 個回合者獲勝， 因此 2:0
           領先時<b>不會進行第三回合</b>。 回合平手時依序比較：旋轉技術得分 → 高分值技術數量 →
-          Gam-jeom 較少 → 由主控依優勢判定。 單一回合累積 {rules.round.gamjeomLimitPerRound} 次
-          Gam-jeom 或分差達 {rules.round.pointGapThreshold} 分時，該回合提前結束。
+          仍相同則
+          <b>直接由你依優勢判定</b>。 單一回合累積 {rules.round.gamjeomLimitPerRound} 次 Gam-jeom
+          或分差達 {rules.round.pointGapThreshold} 分時，該回合提前結束。
         </p>
         <p className="mt-2 rounded-lg bg-panel-2 p-3 text-xs text-slate-400">
           分值依 {rules.name}：正拳 {rules.basePoints.BODY_PUNCH}、身體踢擊{' '}

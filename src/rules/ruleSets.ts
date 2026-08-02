@@ -55,6 +55,14 @@ export interface RuleSetDefinition {
     pointGapThreshold: number
     /** 單一回合累積 Gam-jeom 達此數量，該回合直接判給對手 */
     gamjeomLimitPerRound: number
+    /**
+     * 平手判定是否納入「Gam-jeom 較少者勝」這一項。
+     *
+     * 正式賽有這一項；但訓練賽現場教練通常希望「真的分不出來就我自己判」，
+     * 因此本系統預設關閉，改為直接跳出優勢判定視窗。
+     * 需要完全比照正式賽時，把此值改為 true 即可。
+     */
+    tieBreakUsesGamjeomCount: boolean
   }
   /** 本系統自訂的訓練參數，非 WT 規定 */
   trainingDefaults: {
@@ -110,6 +118,7 @@ export const WT_2026_06_01_TRAINING: RuleSetDefinition = {
     winsNeededOf: (totalRounds: number) => Math.floor(totalRounds / 2) + 1,
     pointGapThreshold: 15,
     gamjeomLimitPerRound: 5,
+    tieBreakUsesGamjeomCount: false,
   },
 
   trainingDefaults: {

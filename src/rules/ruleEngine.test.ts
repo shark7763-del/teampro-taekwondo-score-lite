@@ -317,10 +317,10 @@ describe('回合制與回合勝負判定', () => {
     })
   })
 
-  it('技術數量也相同 → Gam-jeom 較少者勝', () => {
+  it('訓練模式：技術也相同時不用 Gam-jeom 自動判定，直接交給主控', () => {
     // 藍方 1 次最後 10 秒消極 Gam-jeom（紅方 +2）
     // 紅方 2 次一般 Gam-jeom（藍方 +1 +1）
-    // → 分數 2:2、雙方都沒有技術得分，但藍方 Gam-jeom 較少
+    // → 分數 2:2、雙方都沒有技術得分，Gam-jeom 次數不同但不作為判定依據
     const events = [
       gamjeomEvent('BLUE', { remainingMs: 5_000, requestSpecial: true }).event as MatchEvent,
       gamjeomEvent('RED', { remainingMs: 40_000, requestSpecial: false }).event as MatchEvent,
@@ -333,7 +333,8 @@ describe('回合制與回合勝負判定', () => {
       blueGamjeom: 1,
       redGamjeom: 2,
     })
-    expect(outcome).toMatchObject({ winner: 'BLUE', reason: 'FEWER_GAMJEOM' })
+    expect(WT_2026_06_01_TRAINING.round.tieBreakUsesGamjeomCount).toBe(false)
+    expect(outcome).toMatchObject({ winner: null, reason: null })
   })
 
   it('分數與旋轉分相同時，有技術得分者勝過只靠對手犯規得分者', () => {
@@ -350,6 +351,18 @@ describe('回合制與回合勝負判定', () => {
   it('完全相同時不自行猜測，回傳 null 交由優勢判定', () => {
     const events = [scoreEvent('BLUE', 'BODY_KICK'), scoreEvent('RED', 'BODY_KICK')]
     expect(resolveRoundOutcome(events, 1, RULE)).toMatchObject({ winner: null, reason: null })
+  })
+
+  it('Gam-jeom 達上限仍然直接判給對手（與平手判定無關）', () => {
+    const events = Array.from(
+      { length: WT_2026_06_01_TRAINING.round.gamjeomLimitPerRound },
+      () =>
+        gamjeomEvent('BLUE', { remainingMs: 40_000, requestSpecial: false }).event as MatchEvent,
+    )
+    expect(resolveRoundOutcome(events, 1, RULE)).toMatchObject({
+      winner: 'RED',
+      reason: 'GAMJEOM_LIMIT',
+    })
   })
 
   it('0:0 也視為平手，需優勢判定', () => {

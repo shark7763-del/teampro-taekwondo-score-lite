@@ -358,11 +358,14 @@ export function techniqueCountsInRound(
  * 2. 分數較高者勝
  * 3. 分數相同 → 旋轉技術得分較多者勝
  * 4. 仍相同 → 高分值技術數量較多者勝（3 分 → 2 分 → 1 分）
- * 5. 仍相同 → Gam-jeom 較少者勝
- * 6. 仍相同 → 回傳 winner = null，交由主控／主審依優勢判定
+ * 5. 仍相同 → 回傳 winner = null，交由主控／主審依優勢判定
  *
- * ⚠️ 正式賽在第 4 與第 5 之間另有「PSS 登錄擊中次數」一項，
- *    本系統為無電子護具模式，無此資料，故略過並於文件標示。
+ * ⚠️ 與正式賽的差異（兩者皆已於 README 標示）：
+ *    - 正式賽在第 4 步之後另有「PSS 登錄擊中次數」，
+ *      本系統為無電子護具模式無此資料，故略過。
+ *    - 正式賽接著比「Gam-jeom 較少者勝」，本訓練系統預設關閉
+ *      （rules.round.tieBreakUsesGamjeomCount = false），
+ *      改為直接交由主控判定，符合訓練賽現場的實際需求。
  */
 export function resolveRoundOutcome(
   events: readonly MatchEvent[],
@@ -413,8 +416,8 @@ export function resolveRoundOutcome(
     }
   }
 
-  // 5. Gam-jeom 較少
-  if (scores.blueGamjeom !== scores.redGamjeom) {
+  // 5. Gam-jeom 較少（訓練模式預設關閉，改為直接交給主控判定）
+  if (rules.round.tieBreakUsesGamjeomCount && scores.blueGamjeom !== scores.redGamjeom) {
     return {
       winner: scores.blueGamjeom < scores.redGamjeom ? 'BLUE' : 'RED',
       reason: 'FEWER_GAMJEOM',

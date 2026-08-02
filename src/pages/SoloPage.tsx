@@ -254,10 +254,19 @@ export function SoloPage(): React.ReactElement {
               第 {state.pendingSuperiorityRound} 回合平手
             </h2>
             <p className="mt-2 text-sm text-slate-300">
-              分數、旋轉技術得分、各分值技術數量與 Gam-jeom 次數皆相同，
-              <br />
-              請依優勢判定本回合勝方。
+              分數、旋轉技術得分與各分值技術數量皆相同，請依優勢判定本回合勝方。
             </p>
+            <dl className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-panel-2 p-2 text-xs">
+              <dt className="text-left text-slate-500">參考</dt>
+              <dd className="font-bold text-blue-300">{state.config.blueName}</dd>
+              <dd className="font-bold text-red-300">{state.config.redName}</dd>
+              <dt className="text-left text-slate-400">本回合分數</dt>
+              <dd className="tabular">{state.scores.blueScore}</dd>
+              <dd className="tabular">{state.scores.redScore}</dd>
+              <dt className="text-left text-slate-400">Gam-jeom</dt>
+              <dd className="tabular">{state.scores.blueGamjeom}</dd>
+              <dd className="tabular">{state.scores.redGamjeom}</dd>
+            </dl>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <ActionButton
                 tone="neutral"
