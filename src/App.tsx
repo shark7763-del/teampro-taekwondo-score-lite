@@ -2,13 +2,9 @@ import { HashRouter, Route, Routes } from 'react-router'
 import { HomePage } from './pages/HomePage'
 import { SoloPage } from './pages/SoloPage'
 import { MirrorDisplayPage } from './pages/MirrorDisplayPage'
-import {
-  CreatePage,
-  DisplayPage,
-  JoinPage,
-  JudgePage,
-  OperatorPage,
-} from './pages/StagePlaceholder'
+import { JoinPage } from './pages/StagePlaceholder'
+import { CreatePage } from './pages/CreatePage'
+import { DisplayPage, JudgePage, OperatorPage } from './pages/RoomPages'
 
 /**
  * 使用 HashRouter：

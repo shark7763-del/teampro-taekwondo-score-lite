@@ -19,6 +19,8 @@ export interface SideControlsProps {
   specialGamjeomEnabled: boolean
   /** 裁判端等待另一位裁判確認時使用 */
   pendingAction?: ActionType | null
+  /** 裁判端只負責技術得分，Gam-jeom 由主控端處理 */
+  hideGamjeom?: boolean
 }
 
 /**
@@ -47,6 +49,7 @@ export function SideControls({
   onSpecialGamjeom,
   specialGamjeomEnabled,
   pendingAction = null,
+  hideGamjeom = false,
 }: SideControlsProps): React.ReactElement {
   const actions = listActions(ruleSetCode)
   const rules = getRuleSet(ruleSetCode)
@@ -141,57 +144,63 @@ export function SideControls({
         {scoreCell('TURNING_BODY_KICK', false)}
         {scoreCell('TURNING_HEAD_KICK', false)}
 
-        <button
-          type="button"
-          disabled={disabled}
-          onPointerDown={() => {
-            if (disabled) return
-            const now = Date.now()
-            const last = lastPressRef.current[gamjeomKey] ?? 0
-            if (now - last < cooldownMs) return
-            lastPressRef.current[gamjeomKey] = now
-            flash(gamjeomKey)
-            onGamjeom(side)
-          }}
-          aria-label={`${me}違規，${foe}加 ${rules.gamjeom.normalOpponentPoints} 分`}
-          className={[
-            'flex min-h-[64px] flex-col items-center justify-center rounded-lg border-2 px-1',
-            'border-amber-300/60 bg-amber-600 font-bold text-black select-none',
-            'focus-visible:ring-4 focus-visible:ring-white/70 focus-visible:outline-none',
-            'active:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-35',
-            glowing === gamjeomKey ? 'animate-press-glow' : '',
-          ].join(' ')}
-        >
-          <span className="text-[clamp(1.1rem,3.2vh,1.9rem)] leading-none">GJ</span>
-          <span className="mt-0.5 text-[clamp(0.6rem,1.5vh,0.8rem)] font-bold">
-            {me}違規 {foe}+{rules.gamjeom.normalOpponentPoints}
-          </span>
-        </button>
+        {hideGamjeom ? (
+          <div aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            disabled={disabled}
+            onPointerDown={() => {
+              if (disabled) return
+              const now = Date.now()
+              const last = lastPressRef.current[gamjeomKey] ?? 0
+              if (now - last < cooldownMs) return
+              lastPressRef.current[gamjeomKey] = now
+              flash(gamjeomKey)
+              onGamjeom(side)
+            }}
+            aria-label={`${me}違規，${foe}加 ${rules.gamjeom.normalOpponentPoints} 分`}
+            className={[
+              'flex min-h-[64px] flex-col items-center justify-center rounded-lg border-2 px-1',
+              'border-amber-300/60 bg-amber-600 font-bold text-black select-none',
+              'focus-visible:ring-4 focus-visible:ring-white/70 focus-visible:outline-none',
+              'active:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-35',
+              glowing === gamjeomKey ? 'animate-press-glow' : '',
+            ].join(' ')}
+          >
+            <span className="text-[clamp(1.1rem,3.2vh,1.9rem)] leading-none">GJ</span>
+            <span className="mt-0.5 text-[clamp(0.6rem,1.5vh,0.8rem)] font-bold">
+              {me}違規 {foe}+{rules.gamjeom.normalOpponentPoints}
+            </span>
+          </button>
+        )}
       </div>
 
       {/*
         最後 10 秒消極違規：位置從比賽一開始就固定保留，
         未進入最後 10 秒時為 disabled，不會突然出現造成版面位移。
       */}
-      <button
-        type="button"
-        disabled={disabled || !specialGamjeomEnabled}
-        onPointerDown={() => {
-          if (disabled || !specialGamjeomEnabled) return
-          onSpecialGamjeom(side)
-        }}
-        aria-label={`${me}最後 10 秒消極違規，${foe}加 ${rules.gamjeom.lastSecondsOpponentPoints} 分`}
-        aria-disabled={!specialGamjeomEnabled}
-        className={[
-          'min-h-[56px] shrink-0 rounded-lg border-2 px-2 py-1 text-[clamp(0.6rem,1.7vh,0.85rem)] font-bold select-none',
-          'focus-visible:ring-4 focus-visible:ring-white/70 focus-visible:outline-none',
-          specialGamjeomEnabled
-            ? 'border-rose-300/60 bg-rose-700 text-white active:bg-rose-600'
-            : 'border-line bg-panel-2 text-slate-500',
-        ].join(' ')}
-      >
-        最後10秒消極 {foe}+{rules.gamjeom.lastSecondsOpponentPoints}
-      </button>
+      {!hideGamjeom && (
+        <button
+          type="button"
+          disabled={disabled || !specialGamjeomEnabled}
+          onPointerDown={() => {
+            if (disabled || !specialGamjeomEnabled) return
+            onSpecialGamjeom(side)
+          }}
+          aria-label={`${me}最後 10 秒消極違規，${foe}加 ${rules.gamjeom.lastSecondsOpponentPoints} 分`}
+          aria-disabled={!specialGamjeomEnabled}
+          className={[
+            'min-h-[56px] shrink-0 rounded-lg border-2 px-2 py-1 text-[clamp(0.6rem,1.7vh,0.85rem)] font-bold select-none',
+            'focus-visible:ring-4 focus-visible:ring-white/70 focus-visible:outline-none',
+            specialGamjeomEnabled
+              ? 'border-rose-300/60 bg-rose-700 text-white active:bg-rose-600'
+              : 'border-line bg-panel-2 text-slate-500',
+          ].join(' ')}
+        >
+          最後10秒消極 {foe}+{rules.gamjeom.lastSecondsOpponentPoints}
+        </button>
+      )}
     </div>
   )
 }

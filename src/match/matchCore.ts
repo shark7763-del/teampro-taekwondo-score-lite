@@ -47,7 +47,14 @@ export type MatchCommand =
   | { type: 'RESUME' }
   | { type: 'RESET_ROUND_TIME' }
   | { type: 'ADJUST_TIME'; deltaMs: number }
-  | { type: 'SCORE'; side: AthleteSide; action: ActionType; source?: EventSource }
+  | {
+      type: 'SCORE'
+      side: AthleteSide
+      action: ActionType
+      source?: EventSource
+      /** 雙裁判配對成立時帶入；同一組只能計分一次 */
+      matchedGroupId?: string
+    }
   | {
       type: 'GAMJEOM'
       side: AthleteSide
@@ -320,11 +327,19 @@ export function reduceMatch(
     case 'SCORE': {
       const gate = canAcceptScore(state)
       if (!gate.ok) return reject(state, gate.reason)
+      // 同一個配對群組只能計分一次（等同資料庫的 matched_group_id UNIQUE）
+      if (
+        command.matchedGroupId !== undefined &&
+        state.events.some((e) => e.matchedGroupId === command.matchedGroupId)
+      ) {
+        return { state }
+      }
       const event = buildScoreEvent({
         ...eventBase,
         source: command.source ?? 'SOLO',
         athleteSide: command.side,
         actionType: command.action,
+        matchedGroupId: command.matchedGroupId ?? null,
       })
       return withEvent(state, event, now)
     }

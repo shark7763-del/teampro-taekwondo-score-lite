@@ -161,7 +161,8 @@ export interface MatchState {
 
 /** 送分嘗試的結果。單機、mock、Supabase RPC 三種實作共用同一組回傳值。 */
 export type PressOutcome =
-  | { status: 'MATCHED'; event: MatchEvent; matchedGroupId: string }
+  /** 配對成立；呼叫端據此建立唯一一筆 score_event（分數只會增加一次） */
+  | { status: 'MATCHED'; matchedGroupId: string }
   | { status: 'WAITING'; pressId: string; expiresAt: number }
   | { status: 'EXPIRED'; pressId: string }
   | { status: 'REJECTED'; reason: RejectionReason }
