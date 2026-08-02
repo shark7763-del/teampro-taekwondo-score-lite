@@ -9,6 +9,16 @@
 
 ---
 
+## 🔗 線上版
+
+**https://shark7763-del.github.io/teampro-taekwondo-score-lite/**
+
+- 手機開啟後可「加入主畫面」，即為 App 般的使用體驗。
+- 路由使用 hash 形式（例如 `.../#/solo`），確保從 QR Code 開啟或重新整理都不會 404。
+- Repo：`shark7763-del/teampro-taekwondo-score-lite`（public）
+- 更新方式：`git push` 到 `main` → GitHub Actions 會先跑
+  typecheck / lint / test / build，**全部通過才會部署**。
+
 ## 目前狀態
 
 | 階段 | 內容 | 狀態 |
