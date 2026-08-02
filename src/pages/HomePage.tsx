@@ -40,30 +40,38 @@ export function HomePage(): React.ReactElement {
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
           to="/solo"
-          className="flex min-h-[104px] flex-col justify-center rounded-xl border-2 border-emerald-500/50 bg-emerald-600/15 p-4 transition-colors hover:bg-emerald-600/25"
+          className="flex min-h-[104px] flex-col justify-center rounded-xl border-2 border-emerald-500/50 bg-emerald-600/15 p-4 transition-colors hover:bg-emerald-600/25 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
         >
-          <span className="text-xl font-black">單手機計分</span>
+          <span className="text-xl font-black">立即開賽</span>
           <span className="mt-1 text-sm text-slate-300">
-            一台手機立即開始，可鏡射到電視，離線可用
+            沿用上次設定直接進場，可鏡射到電視，離線可用
           </span>
+        </Link>
+
+        <Link
+          to="/solo?setup=1"
+          className="flex min-h-[104px] flex-col justify-center rounded-xl border-2 border-line bg-panel p-4 transition-colors hover:bg-panel-2 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
+        >
+          <span className="text-xl font-black">設定新比賽</span>
+          <span className="mt-1 text-sm text-slate-300">
+            姓名、回合時間、休息時間、賽制與規則模式
+          </span>
+        </Link>
+
+        <Link
+          to="/mirror"
+          className="flex min-h-[76px] flex-col justify-center rounded-xl border border-line bg-panel p-4 hover:bg-panel-2 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
+        >
+          <span className="text-lg font-bold">顯示端（同一台電腦第二視窗）</span>
+          <span className="text-sm text-slate-400">投影機／第二螢幕用的純計分板</span>
         </Link>
 
         <Link
           to="/create"
-          className="flex min-h-[104px] flex-col justify-center rounded-xl border-2 border-line bg-panel p-4 transition-colors hover:bg-panel-2"
+          className="flex min-h-[76px] flex-col justify-center rounded-xl border border-line bg-panel p-4 hover:bg-panel-2 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
         >
-          <span className="text-xl font-black">建立多人比賽</span>
-          <span className="mt-1 text-sm text-slate-300">
-            電視顯示端＋主控端＋裁判 A／B（第二階段）
-          </span>
-        </Link>
-
-        <Link
-          to="/join"
-          className="flex min-h-[76px] flex-col justify-center rounded-xl border border-line bg-panel p-4 hover:bg-panel-2"
-        >
-          <span className="text-lg font-bold">加入比賽</span>
-          <span className="text-sm text-slate-400">輸入六碼房間代碼</span>
+          <span className="text-lg font-bold">建立多人比賽</span>
+          <span className="text-sm text-slate-400">電視＋主控＋裁判 A／B（第二階段）</span>
         </Link>
 
         {recent !== null ? (

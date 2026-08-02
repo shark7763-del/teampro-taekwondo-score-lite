@@ -11,13 +11,15 @@ interface ScoreboardProps {
   /** 電視端會顯示連線狀態列 */
   statusSlot?: React.ReactNode
   compact?: boolean
+  /** 提供時，時間區變成可點擊的開始／暫停按鈕（控制端使用；顯示端不傳） */
+  onToggleTimer?: () => void
 }
 
 const STATUS_LABEL: Record<MatchState['matchStatus'], string> = {
-  READY: '準備中',
-  RUNNING: '進行中',
-  PAUSED: '暫停',
-  REST: '休息',
+  READY: '尚未開始',
+  RUNNING: '比賽進行中',
+  PAUSED: '已暫停',
+  REST: '休息中',
   FINISHED: '比賽結束',
 }
 
@@ -33,11 +35,19 @@ export function Scoreboard({
   flash,
   statusSlot,
   compact = false,
+  onToggleTimer,
 }: ScoreboardProps): React.ReactElement {
   const { config, scores, currentRound, matchStatus } = state
   const rules = getRuleSet(config.ruleSetCode)
   const winsNeeded = roundWinsNeeded(config.totalRounds, config.ruleSetCode)
-  const isLast10 = remainingMs > 0 && remainingMs <= rules.gamjeom.lastSecondsWindowMs
+  const isLast10Window = remainingMs > 0 && remainingMs <= rules.gamjeom.lastSecondsWindowMs
+  const timeToneClass =
+    isLast10Window && matchStatus === 'RUNNING'
+      ? 'text-amber-300'
+      : matchStatus === 'PAUSED'
+        ? 'text-slate-400'
+        : 'text-white'
+  const timeSizeClass = compact ? 'text-[clamp(2.5rem,11vh,6rem)]' : 'text-[clamp(3rem,18vh,12rem)]'
   const scoreSize = compact ? 'text-[clamp(3.5rem,16vh,9rem)]' : 'text-[clamp(5rem,30vh,20rem)]'
   const nameSize = compact ? 'text-[clamp(1rem,3.5vh,1.6rem)]' : 'text-[clamp(1.2rem,5vh,3rem)]'
 
@@ -62,14 +72,32 @@ export function Scoreboard({
             第 {currentRound} 回合
             <span className="ml-1 text-slate-500">（{winsNeeded} 勝制）</span>
           </div>
-          <div
-            className={`tabular font-black leading-none ${
-              isLast10 ? 'text-amber-300' : 'text-white'
-            } ${compact ? 'text-[clamp(2.5rem,11vh,6rem)]' : 'text-[clamp(3rem,18vh,12rem)]'}`}
-            aria-label="剩餘時間"
-          >
-            {formatClock(remainingMs)}
-          </div>
+          {onToggleTimer === undefined ? (
+            <div
+              className={`tabular font-black leading-none ${timeToneClass} ${timeSizeClass}`}
+              aria-label="剩餘時間"
+            >
+              {formatClock(remainingMs)}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onToggleTimer}
+              disabled={matchStatus === 'FINISHED'}
+              aria-label={`剩餘時間 ${formatClock(remainingMs)}，點擊${
+                matchStatus === 'RUNNING' ? '暫停' : '開始'
+              }計時`}
+              className={[
+                'tabular w-full rounded-lg font-black leading-none select-none',
+                'focus-visible:ring-4 focus-visible:ring-white/70 focus-visible:outline-none',
+                'disabled:cursor-not-allowed disabled:opacity-60',
+                timeToneClass,
+                timeSizeClass,
+              ].join(' ')}
+            >
+              {formatClock(remainingMs)}
+            </button>
+          )}
           <div
             className={`rounded-full px-[2vh] py-[0.5vh] text-[clamp(0.7rem,2.4vh,1.3rem)] font-bold ${
               matchStatus === 'RUNNING'

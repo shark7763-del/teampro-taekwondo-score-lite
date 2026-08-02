@@ -1,6 +1,7 @@
 import { HashRouter, Route, Routes } from 'react-router'
 import { HomePage } from './pages/HomePage'
 import { SoloPage } from './pages/SoloPage'
+import { MirrorDisplayPage } from './pages/MirrorDisplayPage'
 import {
   CreatePage,
   DisplayPage,
@@ -21,6 +22,7 @@ export function App(): React.ReactElement {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/solo" element={<SoloPage />} />
+        <Route path="/mirror" element={<MirrorDisplayPage />} />
         <Route path="/create" element={<CreatePage />} />
         <Route path="/join" element={<JoinPage />} />
         <Route path="/display/:roomCode" element={<DisplayPage />} />

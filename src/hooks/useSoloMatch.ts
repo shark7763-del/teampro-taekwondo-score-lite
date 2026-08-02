@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CommandRejection, MatchCommand } from '../match/matchCore'
 import { createMatchState, reduceMatch } from '../match/matchCore'
-import type { MatchEvent, MatchState } from '../types'
+import type { MatchConfig, MatchEvent, MatchState } from '../types'
 import { computeRemainingMs } from '../timer/timer'
 import { clearSoloMatch, loadSoloMatch, saveSoloMatch } from '../storage/soloStorage'
 import { beep, unlockAudio, vibrate } from '../lib/feedback'
@@ -18,6 +18,8 @@ export interface SoloMatchApi {
   lastRejection: { reason: CommandRejection; at: number } | null
   dispatch: (command: MatchCommand) => void
   resetAll: () => void
+  /** 以新的設定開始一場全新比賽（會覆蓋本機保存的比賽） */
+  startNewMatch: (config: Partial<MatchConfig>) => void
   restoredFromStorage: boolean
 }
 
@@ -65,6 +67,15 @@ export function useSoloMatch(now: number): SoloMatchApi {
     setLastRejection(null)
   }, [])
 
+  const startNewMatch = useCallback((config: Partial<MatchConfig>) => {
+    const next = createMatchState(config)
+    timeUpHandledRef.current = ''
+    setLastFlash(null)
+    setLastRejection(null)
+    saveSoloMatch(next)
+    setState(next)
+  }, [])
+
   const remainingMs = computeRemainingMs(state.timer, now)
 
   // 時間到：只由本裝置（單機模式下唯一的控制端）觸發一次
@@ -93,5 +104,14 @@ export function useSoloMatch(now: number): SoloMatchApi {
     state.matchStatus,
   ])
 
-  return { state, remainingMs, lastFlash, lastRejection, dispatch, resetAll, restoredFromStorage }
+  return {
+    state,
+    remainingMs,
+    lastFlash,
+    lastRejection,
+    dispatch,
+    resetAll,
+    startNewMatch,
+    restoredFromStorage,
+  }
 }

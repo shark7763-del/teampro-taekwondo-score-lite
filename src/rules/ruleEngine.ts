@@ -647,6 +647,14 @@ export function reasonLabel(reason: GamjeomReason): string {
   return REASON_LABEL[reason]
 }
 
+/** 復原按鈕上的短描述，例如「藍方 +3」「紅方 GJ」 */
+export function shortDescribeEvent(event: MatchEvent): string {
+  const side = event.athleteSide === 'BLUE' ? '藍' : '紅'
+  if (event.type === 'GAMJEOM') return `${side}方 GJ`
+  if (event.type === 'MANUAL_ADJUSTMENT') return `${side}方 ${event.pointsDelta}`
+  return `${side}方 +${event.pointsDelta}`
+}
+
 export function describeEvent(event: MatchEvent): string {
   if (event.type === 'SCORE' && event.actionType !== null) {
     const desc = listActions(event.ruleSetCode).find((a) => a.action === event.actionType)

@@ -67,6 +67,8 @@ export type MatchCommand =
   | { type: 'RESTART' }
   | { type: 'RENAME'; side: AthleteSide; name: string }
   | { type: 'SWAP_SIDES' }
+  /** 更新音效／震動等即時偏好，不影響任何計分規則 */
+  | { type: 'SET_OPTIONS'; soundEnabled?: boolean; vibrationEnabled?: boolean }
 
 export type CommandRejection = RejectionReason | 'NOTHING_TO_REVERSE' | 'INVALID_COMMAND'
 
@@ -224,13 +226,15 @@ function finalizeRound(
     }
   }
 
-  // 進入回合間休息；下一回合分數重新歸零
+  // 進入回合間休息；下一回合分數重新歸零。
+  // 休息倒數不自動起跑，由教練確認本回合結果後再按「開始休息倒數」，
+  // 避免比賽在教練還沒看完比分時就自己往下跑。
   return {
     ...base,
     currentRound: state.currentRound + 1,
     scores: { ...EMPTY_SCORES },
     matchStatus: 'REST',
-    timer: startTimer(createTimer(state.config.restDurationMs), now),
+    timer: createTimer(state.config.restDurationMs),
   }
 }
 
@@ -469,6 +473,20 @@ export function reduceMatch(
           ? { ...state.config, blueName: name === '' ? '藍方' : name }
           : { ...state.config, redName: name === '' ? '紅方' : name }
       return { state: { ...state, config, updatedAt: now } }
+    }
+
+    case 'SET_OPTIONS': {
+      return {
+        state: {
+          ...state,
+          config: {
+            ...state.config,
+            soundEnabled: command.soundEnabled ?? state.config.soundEnabled,
+            vibrationEnabled: command.vibrationEnabled ?? state.config.vibrationEnabled,
+          },
+          updatedAt: now,
+        },
+      }
     }
 
     case 'SWAP_SIDES': {

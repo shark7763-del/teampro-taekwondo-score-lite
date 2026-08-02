@@ -130,20 +130,62 @@ npm run preview      # 預覽 build 結果
 
 ---
 
+## Solo Mode 操作手順（教練視角）
+
+核心原則：**眼睛看比賽，手指不用找按鈕。**
+
+| 要做什麼 | 怎麼做 |
+|---|---|
+| **開賽** | 首頁 →「立即開賽」（沿用上次設定，直接進場）；要改姓名或時間才點「設定新比賽」 |
+| **計分** | 左藍右紅，兩側配置完全相同的 2×3 固定鍵位，**一次點擊即得分** |
+| **判罰** | 每一側第三排右下角的 **GJ** 鍵，按鈕上直接寫「藍方違規 紅+1」 |
+| **最後10秒消極** | 每一側最下方的固定鍵，平時是灰色停用，進入最後 10 秒自動亮起（**位置永遠不變**） |
+| **計時** | 點畫面中央的**大時間**即可開始／暫停，也可用中間欄的開始鍵 |
+| **復原** | 中間欄的「復原：藍方 +3」直接告訴你要復原哪一筆；或在計分後 2.6 秒內點提示上的「復原」 |
+| **修正** | 「扣分修正」→ 按鈕全部變成 −1／−2／−3／−4／−6 →**扣一次自動退出**（5 秒未操作也會退出） |
+| **結束回合** | **長按**「長按結束本回合」約 0.9 秒，有進度條；中途放開即取消 |
+| **下一回合** | 回合結束後跳出面板，顯示本回合比分與勝方，再選「開始休息倒數」或「直接進入第 N 回合」 |
+
+鍵位（藍紅完全一致，建立肌肉記憶）：
+
+```
+┌──────────┬──────────┐
+│ +2 身體  │ +3 頭部  │  ← 最常用，面積最大
+├──────────┼──────────┤
+│ +1 正拳  │ +4 旋身  │
+├──────────┼──────────┤
+│ +6 旋頭  │ GJ 違規  │
+└──────────┴──────────┘
+│  最後10秒消極（固定位置）  │
+```
+
+版型：手機直向＝控制列在上、藍紅左右分欄在下；手機橫向／平板／桌機＝左藍｜中控制｜右紅，全部使用 CSS Grid。
+
 ## 專案結構
 
 ```
 src/
-├─ types/          共用型別（含 PSS、三裁判預留欄位）
+├─ types/          共用型別（game state interface，含 PSS、三裁判預留欄位）
 ├─ rules/          規則集與規則引擎（唯一分值來源）+ 測試
-├─ timer/          計時器純函式 + 測試
-├─ match/          比賽狀態機（單機與伺服器共用判斷）+ 測試
-├─ storage/        單機模式 localStorage 保存
+├─ timer/          計時器純函式（時間差重算）+ 測試
+├─ match/          比賽狀態機（單機與未來伺服器共用判斷）+ 測試
+├─ storage/        soloStorage（比賽資料）、preferences（偏好與上次設定）+ 測試
+├─ sync/           displaySync：顯示端同步的 service 層（BroadcastChannel／未來 WebSocket）
 ├─ hooks/          useNow / useSoloMatch / useFullscreen / useWakeLock
 ├─ lib/            震動與 WebAudio 提示音
-├─ components/     Scoreboard（大型計分板）、ScoreButtons、ui
-└─ pages/          HomePage、SoloPage、階段 2–4 頁面占位
+├─ components/     顯示端：Scoreboard｜控制端：ControlPanel、ScoreButtons(SideControls)
+│                  流程：RoundEndPanel、SetupPanel、ConfirmModal、LongPressButton、ui
+└─ pages/          HomePage、SoloPage、MirrorDisplayPage、階段 2–4 頁面占位
 ```
+
+**顯示端與控制端已完全分離**：`Scoreboard` 不含任何操作邏輯，`ControlPanel` 不含任何比分顯示邏輯，
+兩者只透過 `MatchState` 溝通。未來手機當控制器、電視當顯示器時可直接沿用。
+
+### 同一台電腦的第二視窗顯示
+
+首頁 →「顯示端」（或直接開 `#/mirror`），可在筆電接投影機時把第二個視窗設為純計分板，
+透過 `BroadcastChannel` 即時同步，**不需要任何後端**。
+跨裝置（手機控制＋電視顯示）需要房間碼與後端，**尚未實作，也不會假裝可用**。
 
 ---
 
@@ -177,9 +219,19 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
 
 ---
 
+## PWA 與離線
+
+- 已設定 manifest、service worker（`vite-plugin-pwa`，`autoUpdate`）與 192／512／maskable 圖示。
+- **第一次成功載入後即可完全離線使用 Solo Mode**（16 個資源預先快取，約 344 KB）。
+- 圖示由 `node scripts/generate-icons.mjs` 產生（純 Node，不需影像套件）。
+- 發布新版本時 service worker 會自動更新並接管，不會卡在舊版；
+  `cleanupOutdatedCaches` 會清掉舊快取，**localStorage 中的比賽資料不受影響**。
+
 ## 已知限制
 
 - 階段 1 僅單機模式可實際使用；多人房間、雙裁判、Realtime 尚未完成。
+- `#/mirror` 顯示端**只能在同一個瀏覽器的另一個視窗**運作（BroadcastChannel），無法跨裝置。
+- 尚未導入 Playwright E2E；目前以 React Testing Library 的整合測試涵蓋操作流程。
 - 單機模式資料存在該台手機的 localStorage，換手機不會同步。
 - 規則分值來源為公開整理資料，**尚未逐條比對 WT 官方 PDF**。
 - PSS 模擬模式與三裁判 2/3 確認僅保留資料結構與規則，未提供 UI。

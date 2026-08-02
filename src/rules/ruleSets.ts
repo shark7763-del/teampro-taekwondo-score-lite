@@ -124,13 +124,27 @@ export const WT_2026_06_01_TRAINING: RuleSetDefinition = {
   trainingDefaults: {
     confirmationWindowMs: 1_000,
     confirmationWindowOptions: [600, 800, 1_000, 1_200, 1_500, 2_000],
-    pressCooldownMs: 400,
+    // 高速對打時教練可能 0.3 秒內連按兩次有效攻擊，
+    // 冷卻只用來擋手指抖動造成的重複觸發，不可影響正常快速計分。
+    pressCooldownMs: 180,
     maxPressesPerSecond: 3,
   },
 }
 
+/**
+ * 正式規則模式：與訓練模式唯一的差別是回合平手時
+ * 仍採用正式賽的「Gam-jeom 較少者勝」，不直接交給教練判定。
+ */
+export const WT_2026_06_01_OFFICIAL: RuleSetDefinition = {
+  ...WT_2026_06_01_TRAINING,
+  code: 'WT_2026_06_01_OFFICIAL',
+  name: 'WT Competition Rules 2026-06-01（正式規則模式）',
+  round: { ...WT_2026_06_01_TRAINING.round, tieBreakUsesGamjeomCount: true },
+}
+
 export const RULE_SETS: Readonly<Record<string, RuleSetDefinition>> = {
   [WT_2026_06_01_TRAINING.code]: WT_2026_06_01_TRAINING,
+  [WT_2026_06_01_OFFICIAL.code]: WT_2026_06_01_OFFICIAL,
 }
 
 export const DEFAULT_RULE_SET_CODE = WT_2026_06_01_TRAINING.code
