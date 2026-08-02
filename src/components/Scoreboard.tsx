@@ -2,7 +2,7 @@ import type { AthleteSide, MatchState } from '../types'
 import { formatClock } from '../timer/timer'
 import { getRuleSet } from '../rules/ruleSets'
 import type { FlashEvent } from '../hooks/useSoloMatch'
-import { opponentOf } from '../rules/ruleEngine'
+import { opponentOf, roundWinsNeeded } from '../rules/ruleEngine'
 
 interface ScoreboardProps {
   state: MatchState
@@ -36,6 +36,7 @@ export function Scoreboard({
 }: ScoreboardProps): React.ReactElement {
   const { config, scores, currentRound, matchStatus } = state
   const rules = getRuleSet(config.ruleSetCode)
+  const winsNeeded = roundWinsNeeded(config.totalRounds, config.ruleSetCode)
   const isLast10 = remainingMs > 0 && remainingMs <= rules.gamjeom.lastSecondsWindowMs
   const scoreSize = compact ? 'text-[clamp(3.5rem,16vh,9rem)]' : 'text-[clamp(5rem,30vh,20rem)]'
   const nameSize = compact ? 'text-[clamp(1rem,3.5vh,1.6rem)]' : 'text-[clamp(1.2rem,5vh,3rem)]'
@@ -48,14 +49,18 @@ export function Scoreboard({
           name={config.blueName}
           score={scores.blueScore}
           gamjeom={scores.blueGamjeom}
+          roundWins={state.roundWins.blue}
+          winsNeeded={winsNeeded}
+          isWinner={state.matchWinner === 'BLUE'}
           flash={flash}
           scoreSize={scoreSize}
           nameSize={nameSize}
         />
 
         <div className="flex flex-col items-center justify-center gap-[1vh] border-x-2 border-line bg-panel px-2">
-          <div className="text-[clamp(0.7rem,2.2vh,1.2rem)] font-semibold tracking-widest text-slate-400">
-            第 {currentRound} / {config.totalRounds} 回合
+          <div className="text-center text-[clamp(0.7rem,2.2vh,1.2rem)] font-semibold tracking-widest text-slate-400">
+            第 {currentRound} 回合
+            <span className="ml-1 text-slate-500">（{winsNeeded} 勝制）</span>
           </div>
           <div
             className={`tabular font-black leading-none ${
@@ -84,6 +89,9 @@ export function Scoreboard({
           name={config.redName}
           score={scores.redScore}
           gamjeom={scores.redGamjeom}
+          roundWins={state.roundWins.red}
+          winsNeeded={winsNeeded}
+          isWinner={state.matchWinner === 'RED'}
           flash={flash}
           scoreSize={scoreSize}
           nameSize={nameSize}
@@ -106,6 +114,9 @@ interface SidePanelProps {
   name: string
   score: number
   gamjeom: number
+  roundWins: number
+  winsNeeded: number
+  isWinner: boolean
   flash: FlashEvent | null
   scoreSize: string
   nameSize: string
@@ -116,6 +127,9 @@ function SidePanel({
   name,
   score,
   gamjeom,
+  roundWins,
+  winsNeeded,
+  isWinner,
   flash,
   scoreSize,
   nameSize,
@@ -133,7 +147,24 @@ function SidePanel({
         className={`absolute top-[2vh] max-w-[92%] truncate px-2 font-bold text-white/90 ${nameSize}`}
       >
         {name}
+        {isWinner && <span className="ml-2 text-amber-300">勝</span>}
       </h2>
+
+      {/* 三回合兩勝制：已贏得的回合數 */}
+      <div
+        className="absolute top-[9vh] flex gap-[0.8vh]"
+        aria-label={`${isBlue ? '藍方' : '紅方'}已勝回合數 ${roundWins}`}
+      >
+        {Array.from({ length: winsNeeded }, (_, i) => (
+          <span
+            key={i}
+            className={`inline-block rounded-full border-2 ${
+              i < roundWins ? 'border-amber-300 bg-amber-300' : 'border-white/40 bg-transparent'
+            }`}
+            style={{ width: 'clamp(0.7rem,2.2vh,1.6rem)', height: 'clamp(0.7rem,2.2vh,1.6rem)' }}
+          />
+        ))}
+      </div>
 
       <div
         className={`tabular font-black leading-none text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.45)] ${scoreSize}`}

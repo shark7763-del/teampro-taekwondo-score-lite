@@ -5,15 +5,21 @@ import {
   buildReversalEvent,
   buildScoreEvent,
   canApplyTurningBonus,
+  computeRoundScores,
   computeScores,
   EMPTY_SCORES,
   findLastReversibleEvent,
+  isGamjeomLimitReached,
+  isPointGapReached,
   isWithinLastSeconds,
   listActions,
   opponentOf,
   pointsForAction,
   pssBreakdown,
   resolveGamjeom,
+  resolveRoundOutcome,
+  roundWinsNeeded,
+  turningPointsInRound,
 } from './ruleEngine'
 import { DEFAULT_RULE_SET_CODE, WT_2026_06_01_TRAINING } from './ruleSets'
 import type { AthleteSide, ActionType, MatchEvent, MatchStatus, Scores } from '../types'
@@ -262,6 +268,124 @@ describe('規則引擎：PSS 模擬模式（第二版 UI，第一版先鎖定規
     expect(reversal.ok).toBe(true)
     if (!reversal.ok) return
     expect(canApplyTurningBonus([base, reversal.event], 'BLUE', NOW, RULE).allowed).toBe(false)
+  })
+})
+
+/* ================================================================== */
+/* 三回合兩勝制：每回合分數獨立，平手判定順序                          */
+/* ================================================================== */
+
+describe('回合制與回合勝負判定', () => {
+  function inRound(event: MatchEvent, round: number): MatchEvent {
+    return { ...event, round }
+  }
+
+  it('每回合分數獨立計算，不可跨回合累加', () => {
+    const events = [
+      inRound(scoreEvent('BLUE', 'HEAD_KICK'), 1),
+      inRound(scoreEvent('BLUE', 'BODY_KICK'), 2),
+      inRound(scoreEvent('RED', 'TURNING_HEAD_KICK'), 2),
+    ]
+    expect(computeRoundScores(events, 1)).toMatchObject({ blueScore: 3, redScore: 0 })
+    expect(computeRoundScores(events, 2)).toMatchObject({ blueScore: 2, redScore: 6 })
+    // 全部加總會是 5:6，但那不是任何一個回合的比分
+    expect(computeScores(events)).toMatchObject({ blueScore: 5, redScore: 6 })
+  })
+
+  it('分數不同時直接由分數決定回合勝負', () => {
+    const events = [scoreEvent('RED', 'BODY_KICK'), scoreEvent('BLUE', 'BODY_PUNCH')]
+    expect(resolveRoundOutcome(events, 1, RULE)).toMatchObject({
+      winner: 'RED',
+      reason: 'POINTS',
+    })
+  })
+
+  it('平手且旋轉分相同 → 比較高分值技術數量（3 分優先於 2 分）', () => {
+    // 藍：3 + 1 + 1 + 1 = 6；紅：2 + 2 + 2 = 6，旋轉分皆為 0
+    const events = [
+      scoreEvent('BLUE', 'HEAD_KICK'),
+      scoreEvent('BLUE', 'BODY_PUNCH'),
+      scoreEvent('BLUE', 'BODY_PUNCH'),
+      scoreEvent('BLUE', 'BODY_PUNCH'),
+      scoreEvent('RED', 'BODY_KICK'),
+      scoreEvent('RED', 'BODY_KICK'),
+      scoreEvent('RED', 'BODY_KICK'),
+    ]
+    expect(resolveRoundOutcome(events, 1, RULE)).toMatchObject({
+      winner: 'BLUE',
+      reason: 'HIGHER_TECHNIQUE',
+    })
+  })
+
+  it('技術數量也相同 → Gam-jeom 較少者勝', () => {
+    // 藍方 1 次最後 10 秒消極 Gam-jeom（紅方 +2）
+    // 紅方 2 次一般 Gam-jeom（藍方 +1 +1）
+    // → 分數 2:2、雙方都沒有技術得分，但藍方 Gam-jeom 較少
+    const events = [
+      gamjeomEvent('BLUE', { remainingMs: 5_000, requestSpecial: true }).event as MatchEvent,
+      gamjeomEvent('RED', { remainingMs: 40_000, requestSpecial: false }).event as MatchEvent,
+      gamjeomEvent('RED', { remainingMs: 30_000, requestSpecial: false }).event as MatchEvent,
+    ]
+    const outcome = resolveRoundOutcome(events, 1, RULE)
+    expect(outcome.scores).toMatchObject({
+      blueScore: 2,
+      redScore: 2,
+      blueGamjeom: 1,
+      redGamjeom: 2,
+    })
+    expect(outcome).toMatchObject({ winner: 'BLUE', reason: 'FEWER_GAMJEOM' })
+  })
+
+  it('分數與旋轉分相同時，有技術得分者勝過只靠對手犯規得分者', () => {
+    // 藍方 1 分來自正拳；紅方 1 分來自藍方的 Gam-jeom
+    const events = [
+      scoreEvent('BLUE', 'BODY_PUNCH'),
+      gamjeomEvent('BLUE', { remainingMs: 40_000, requestSpecial: false }).event as MatchEvent,
+    ]
+    const outcome = resolveRoundOutcome(events, 1, RULE)
+    expect(outcome.scores).toMatchObject({ blueScore: 1, redScore: 1 })
+    expect(outcome).toMatchObject({ winner: 'BLUE', reason: 'HIGHER_TECHNIQUE' })
+  })
+
+  it('完全相同時不自行猜測，回傳 null 交由優勢判定', () => {
+    const events = [scoreEvent('BLUE', 'BODY_KICK'), scoreEvent('RED', 'BODY_KICK')]
+    expect(resolveRoundOutcome(events, 1, RULE)).toMatchObject({ winner: null, reason: null })
+  })
+
+  it('0:0 也視為平手，需優勢判定', () => {
+    expect(resolveRoundOutcome([], 1, RULE)).toMatchObject({ winner: null })
+  })
+
+  it('三回合需 2 勝、五回合需 3 勝', () => {
+    expect(roundWinsNeeded(3, RULE)).toBe(2)
+    expect(roundWinsNeeded(5, RULE)).toBe(3)
+  })
+
+  it('分差門檻為 15；Gam-jeom 上限為 5', () => {
+    expect(WT_2026_06_01_TRAINING.round.pointGapThreshold).toBe(15)
+    expect(WT_2026_06_01_TRAINING.round.gamjeomLimitPerRound).toBe(5)
+    expect(
+      isPointGapReached({ blueScore: 15, redScore: 0, blueGamjeom: 0, redGamjeom: 0 }, RULE),
+    ).toBe(true)
+    expect(
+      isPointGapReached({ blueScore: 14, redScore: 0, blueGamjeom: 0, redGamjeom: 0 }, RULE),
+    ).toBe(false)
+    expect(
+      isGamjeomLimitReached({ blueScore: 0, redScore: 0, blueGamjeom: 5, redGamjeom: 0 }, RULE),
+    ).toBe(true)
+  })
+
+  it('已被復原的得分不列入平手判定', () => {
+    const turning = scoreEvent('BLUE', 'TURNING_BODY_KICK')
+    const reversal = buildReversalEvent([turning], turning.id, {
+      source: 'OPERATOR',
+      createdBy: 'test',
+      now: NOW,
+      remainingMsAtEvent: 10_000,
+    })
+    if (!reversal.ok) throw new Error('unexpected')
+    const events = [turning, reversal.event]
+    expect(turningPointsInRound(events, 1, 'BLUE')).toBe(0)
   })
 })
 

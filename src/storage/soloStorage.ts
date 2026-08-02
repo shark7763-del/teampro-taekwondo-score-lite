@@ -1,5 +1,5 @@
 import type { MatchState } from '../types'
-import { computeScores } from '../rules/ruleEngine'
+import { computeRoundScores } from '../rules/ruleEngine'
 
 /**
  * 單機模式的本機保存。
@@ -8,7 +8,8 @@ import { computeScores } from '../rules/ruleEngine'
  */
 
 const SOLO_KEY = 'tp-tkd-score-lite:solo:v1'
-const SCHEMA_VERSION = 1
+/** v2：改為三回合兩勝制，狀態新增 roundResults / roundWins，舊資料一律作廢 */
+const SCHEMA_VERSION = 2
 
 interface StoredSolo {
   schemaVersion: number
@@ -43,8 +44,12 @@ export function loadSoloMatch(): { state: MatchState; savedAt: number } | null {
     if (parsed.schemaVersion !== SCHEMA_VERSION) return null
     const state = parsed.state
     if (state?.config === undefined || !Array.isArray(state.events)) return null
-    // 以事件列表重算分數，快照僅供顯示用
-    return { state: { ...state, scores: computeScores(state.events) }, savedAt: parsed.savedAt }
+    if (!Array.isArray(state.roundResults)) return null
+    // 以事件列表重算「目前回合」的分數（三回合兩勝制，分數每回合歸零）
+    return {
+      state: { ...state, scores: computeRoundScores(state.events, state.currentRound) },
+      savedAt: parsed.savedAt,
+    }
   } catch (error) {
     console.warn('[solo] 本機資料損毀，已忽略', error)
     return null

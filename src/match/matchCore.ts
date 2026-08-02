@@ -7,17 +7,23 @@ import type {
   MatchEvent,
   MatchState,
   RejectionReason,
+  RoundResult,
+  RoundWinReason,
 } from '../types'
 import {
   buildGamjeomEvent,
   buildManualAdjustmentEvent,
   buildReversalEvent,
   buildScoreEvent,
-  computeScores,
+  computeRoundScores,
   createId,
   EMPTY_SCORES,
   findLastReversibleEvent,
+  isGamjeomLimitReached,
+  isPointGapReached,
   resolveGamjeom,
+  resolveRoundOutcome,
+  roundWinsNeeded,
 } from '../rules/ruleEngine'
 import { DEFAULT_RULE_SET_CODE, getRuleSet } from '../rules/ruleSets'
 import {
@@ -54,6 +60,8 @@ export type MatchCommand =
   | { type: 'REVERSE_EVENT'; eventId: string }
   | { type: 'NEXT_ROUND' }
   | { type: 'PREV_ROUND' }
+  /** 回合平手且所有判定條件相同時，由主控／主審依優勢判定 */
+  | { type: 'DECIDE_SUPERIORITY'; winner: AthleteSide }
   | { type: 'TIME_UP' }
   | { type: 'FINISH' }
   | { type: 'RESTART' }
@@ -99,9 +107,13 @@ export function createMatchState(
     config,
     scores: { ...EMPTY_SCORES },
     currentRound: 1,
+    roundResults: [],
+    roundWins: { blue: 0, red: 0 },
     matchStatus: 'READY',
     timer: createTimer(config.roundDurationMs),
     events: [],
+    matchWinner: null,
+    pendingSuperiorityRound: null,
     updatedAt: now,
   }
 }
@@ -110,11 +122,115 @@ function reject(state: MatchState, reason: CommandRejection): CommandResult {
   return { state, rejected: reason }
 }
 
+/**
+ * 加入一筆事件。
+ *
+ * ⚠️ 三回合兩勝制：`scores` 只代表「目前這一回合」的分數，每回合歸零。
+ * 加入事件後會立即檢查「分差達門檻」與「Gam-jeom 達上限」，
+ * 符合條件時該回合當場結束，不需等時間到。
+ */
 function withEvent(state: MatchState, event: MatchEvent, now: number): CommandResult {
   const events = [...state.events, event]
+  const scores = computeRoundScores(events, state.currentRound)
+  const next: MatchState = { ...state, events, scores, updatedAt: now }
+
+  const ruleCode = state.config.ruleSetCode
+  if (state.matchStatus === 'RUNNING' || state.matchStatus === 'PAUSED') {
+    if (isGamjeomLimitReached(scores, ruleCode)) {
+      return { state: finalizeRound(next, now), emitted: event }
+    }
+    if (isPointGapReached(scores, ruleCode)) {
+      return { state: finalizeRound(next, now, 'POINT_GAP'), emitted: event }
+    }
+  }
+  return { state: next, emitted: event }
+}
+
+/**
+ * 結束目前回合並結算勝負。
+ *
+ * 平手且所有判定條件都相同時，回傳 `pendingSuperiorityRound`，
+ * 由主控（正式賽為主審）依優勢判定，系統不自行猜測。
+ */
+function finalizeRound(
+  state: MatchState,
+  now: number,
+  forcedReason?: RoundWinReason,
+  forcedWinner?: AthleteSide,
+): MatchState {
+  const outcome = resolveRoundOutcome(state.events, state.currentRound, state.config.ruleSetCode)
+  const winner = forcedWinner ?? outcome.winner
+
+  if (winner === null) {
+    return {
+      ...state,
+      matchStatus: 'PAUSED',
+      timer: pauseTimer(state.timer, now),
+      pendingSuperiorityRound: state.currentRound,
+      updatedAt: now,
+    }
+  }
+
+  const reason: RoundWinReason =
+    forcedWinner !== undefined && outcome.winner === null
+      ? 'SUPERIORITY'
+      : (forcedReason ?? outcome.reason ?? 'POINTS')
+
+  const result: RoundResult = {
+    round: state.currentRound,
+    blueScore: outcome.scores.blueScore,
+    redScore: outcome.scores.redScore,
+    blueGamjeom: outcome.scores.blueGamjeom,
+    redGamjeom: outcome.scores.redGamjeom,
+    winner,
+    reason,
+    decidedAt: now,
+  }
+
+  const roundWins = {
+    blue: state.roundWins.blue + (winner === 'BLUE' ? 1 : 0),
+    red: state.roundWins.red + (winner === 'RED' ? 1 : 0),
+  }
+  const roundResults = [...state.roundResults, result]
+  const needed = roundWinsNeeded(state.config.totalRounds, state.config.ruleSetCode)
+
+  const base: MatchState = {
+    ...state,
+    roundResults,
+    roundWins,
+    pendingSuperiorityRound: null,
+    updatedAt: now,
+  }
+
+  // 先贏得所需回合數者獲勝 → 不再進行後續回合
+  if (roundWins.blue >= needed || roundWins.red >= needed) {
+    return {
+      ...base,
+      matchStatus: 'FINISHED',
+      matchWinner: roundWins.blue >= needed ? 'BLUE' : 'RED',
+      timer: pauseTimer(state.timer, now),
+    }
+  }
+
+  // 回合已打完但無人達標（理論上只在自訂回合數時發生）
+  if (state.currentRound >= state.config.totalRounds) {
+    const matchWinner =
+      roundWins.blue === roundWins.red ? null : roundWins.blue > roundWins.red ? 'BLUE' : 'RED'
+    return {
+      ...base,
+      matchStatus: 'FINISHED',
+      matchWinner,
+      timer: pauseTimer(state.timer, now),
+    }
+  }
+
+  // 進入回合間休息；下一回合分數重新歸零
   return {
-    state: { ...state, events, scores: computeScores(events), updatedAt: now },
-    emitted: event,
+    ...base,
+    currentRound: state.currentRound + 1,
+    scores: { ...EMPTY_SCORES },
+    matchStatus: 'REST',
+    timer: startTimer(createTimer(state.config.restDurationMs), now),
   }
 }
 
@@ -264,11 +380,12 @@ export function reduceMatch(
       return withEvent(state, result.event, now)
     }
 
-    /* ---------------- 回合 ---------------- */
+    /* ---------------- 回合（三回合兩勝制） ---------------- */
     case 'TIME_UP': {
       if (state.matchStatus === 'FINISHED') return { state }
+      if (state.pendingSuperiorityRound !== null) return { state }
       if (state.matchStatus === 'REST') {
-        // 休息結束 → 進入下一回合待命
+        // 休息結束 → 下一回合待命（分數已於結算時歸零）
         return {
           state: {
             ...state,
@@ -278,51 +395,50 @@ export function reduceMatch(
           },
         }
       }
-      if (state.currentRound >= state.config.totalRounds) {
+      // 回合時間到 → 結算本回合勝負
+      return { state: finalizeRound(state, now) }
+    }
+
+    case 'NEXT_ROUND': {
+      if (state.matchStatus === 'FINISHED') return reject(state, 'MATCH_FINISHED')
+      if (state.pendingSuperiorityRound !== null) return reject(state, 'INVALID_COMMAND')
+      if (state.matchStatus === 'REST') {
         return {
           state: {
             ...state,
-            matchStatus: 'FINISHED',
-            timer: { timerStatus: 'STOPPED', timerStartedAt: null, remainingMsAtStart: 0 },
+            matchStatus: 'READY',
+            timer: createTimer(state.config.roundDurationMs),
             updatedAt: now,
           },
         }
       }
-      return {
-        state: {
-          ...state,
-          matchStatus: 'REST',
-          currentRound: state.currentRound + 1,
-          timer: startTimer(createTimer(state.config.restDurationMs), now),
-          updatedAt: now,
-        },
-      }
+      // 提前結束本回合並結算
+      return { state: finalizeRound(state, now) }
     }
 
-    case 'NEXT_ROUND': {
-      if (state.currentRound >= state.config.totalRounds) {
-        return {
-          state: { ...state, matchStatus: 'FINISHED', updatedAt: now },
-        }
-      }
-      return {
-        state: {
-          ...state,
-          currentRound: state.currentRound + 1,
-          matchStatus: 'READY',
-          timer: createTimer(state.config.roundDurationMs),
-          updatedAt: now,
-        },
-      }
+    case 'DECIDE_SUPERIORITY': {
+      if (state.pendingSuperiorityRound === null) return reject(state, 'INVALID_COMMAND')
+      return { state: finalizeRound(state, now, 'SUPERIORITY', command.winner) }
     }
 
     case 'PREV_ROUND': {
-      if (state.currentRound <= 1) return reject(state, 'INVALID_COMMAND')
+      // 回到上一回合：撤銷上一回合的結算，該回合的得分紀錄仍保留
+      const last = state.roundResults.at(-1)
+      if (last === undefined) return reject(state, 'INVALID_COMMAND')
+      const roundResults = state.roundResults.slice(0, -1)
       return {
         state: {
           ...state,
-          currentRound: state.currentRound - 1,
+          roundResults,
+          roundWins: {
+            blue: state.roundWins.blue - (last.winner === 'BLUE' ? 1 : 0),
+            red: state.roundWins.red - (last.winner === 'RED' ? 1 : 0),
+          },
+          currentRound: last.round,
+          scores: computeRoundScores(state.events, last.round),
           matchStatus: 'READY',
+          matchWinner: null,
+          pendingSuperiorityRound: null,
           timer: createTimer(state.config.roundDurationMs),
           updatedAt: now,
         },

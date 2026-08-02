@@ -49,6 +49,37 @@ export interface Scores {
 }
 
 /**
+ * 回合勝負的判定依據。
+ * 三回合兩勝制下，每回合分數獨立歸零計算，先贏兩回合者獲勝。
+ */
+export type RoundWinReason =
+  /** 該回合分數較高 */
+  | 'POINTS'
+  /** 分數相同：旋轉技術得分較多 */
+  | 'TURNING_POINTS'
+  /** 分數相同：高分值技術數量較多（3分 → 2分 → 1分） */
+  | 'HIGHER_TECHNIQUE'
+  /** 分數相同：Gam-jeom 較少 */
+  | 'FEWER_GAMJEOM'
+  /** 對手該回合累積 Gam-jeom 達上限 */
+  | 'GAMJEOM_LIMIT'
+  /** 分差達門檻，回合提前結束 */
+  | 'POINT_GAP'
+  /** 主控／主審依優勢判定 */
+  | 'SUPERIORITY'
+
+export interface RoundResult {
+  round: number
+  blueScore: number
+  redScore: number
+  blueGamjeom: number
+  redGamjeom: number
+  winner: AthleteSide | null
+  reason: RoundWinReason | null
+  decidedAt: number
+}
+
+/**
  * 比賽事件（等同資料庫 score_events）。
  *
  * ⚠️ athleteSide 的語意依 type 而不同，這是最容易出錯的地方，故集中定義：
@@ -111,11 +142,20 @@ export interface TimerSnapshot {
 
 export interface MatchState {
   config: MatchConfig
+  /** ⚠️ 這是「目前這一回合」的分數，每回合歸零重新計算 */
   scores: Scores
   currentRound: number
+  /** 已完成回合的結果，長度即為已打完的回合數 */
+  roundResults: RoundResult[]
+  /** 各方已贏得的回合數（三回合兩勝制） */
+  roundWins: { blue: number; red: number }
   matchStatus: MatchStatus
   timer: TimerSnapshot
   events: MatchEvent[]
+  /** 比賽最終勝方；平手或未結束為 null */
+  matchWinner: AthleteSide | null
+  /** 等待主控依優勢判定回合勝負時，為該回合數 */
+  pendingSuperiorityRound: number | null
   updatedAt: number
 }
 

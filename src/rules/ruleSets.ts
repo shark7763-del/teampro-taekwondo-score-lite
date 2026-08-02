@@ -43,6 +43,19 @@ export interface RuleSetDefinition {
     /** 追認旋轉追加分時，回溯尋找基本踢擊事件的時間範圍（毫秒） */
     turningBonusLookbackMs: number
   }
+  /**
+   * 回合制規則（三回合兩勝制）。
+   * 每回合分數獨立歸零計算，先贏兩回合者獲勝，
+   * 因此 2:0 領先時不會進行第三回合。
+   */
+  round: {
+    /** 需贏得幾個回合才算獲勝；由總回合數推導（3 回合 → 2 勝） */
+    winsNeededOf: (totalRounds: number) => number
+    /** 分差達此門檻時該回合提前結束（2026 由 12 調整為 15） */
+    pointGapThreshold: number
+    /** 單一回合累積 Gam-jeom 達此數量，該回合直接判給對手 */
+    gamjeomLimitPerRound: number
+  }
   /** 本系統自訂的訓練參數，非 WT 規定 */
   trainingDefaults: {
     confirmationWindowMs: number
@@ -59,7 +72,8 @@ export const WT_2026_06_01_TRAINING: RuleSetDefinition = {
   name: 'WT Competition Rules 2026-06-01（訓練用）',
   effectiveDate: '2026-06-01',
   sourceNote:
-    '分值與 Gam-jeom 規則依 World Taekwondo 2026 年競賽規則之公開整理資料建置（旋轉技術＝基本分兩倍、最後 10 秒消極判罰對手 +2）。' +
+    '分值與 Gam-jeom 規則依 World Taekwondo 2026 年競賽規則之公開整理資料建置' +
+    '（三回合兩勝制、每回合分數歸零、旋轉技術＝基本分兩倍、最後 10 秒消極判罰對手 +2）。' +
     '⚠️ 尚未逐條比對 WT 官方 PDF 原文，正式引用前請核對官方文件。' +
     '⚠️ 雙裁判確認時間窗為本系統的訓練操作參數，World Taekwondo 並無此秒數規定。',
   officialSourceVerified: false,
@@ -90,6 +104,12 @@ export const WT_2026_06_01_TRAINING: RuleSetDefinition = {
     judgePunchPoints: 1,
     turningBonusRequiresBaseKick: true,
     turningBonusLookbackMs: 3_000,
+  },
+
+  round: {
+    winsNeededOf: (totalRounds: number) => Math.floor(totalRounds / 2) + 1,
+    pointGapThreshold: 15,
+    gamjeomLimitPerRound: 5,
   },
 
   trainingDefaults: {

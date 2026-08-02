@@ -6,7 +6,13 @@ import { ActionButton, Toast } from '../components/ui'
 import { useNow } from '../hooks/useNow'
 import { useFullscreen, useWakeLock } from '../hooks/useFullscreen'
 import { useSoloMatch } from '../hooks/useSoloMatch'
-import { describeEvent, pointsForAction, reversedEventIds, sideLabel } from '../rules/ruleEngine'
+import {
+  describeEvent,
+  pointsForAction,
+  reversedEventIds,
+  roundReasonLabel,
+  sideLabel,
+} from '../rules/ruleEngine'
 import { getRuleSet } from '../rules/ruleSets'
 import type { ActionType, AthleteSide, GamjeomReason } from '../types'
 import { canAcceptScore, type CommandRejection } from '../match/matchCore'
@@ -201,7 +207,7 @@ export function SoloPage(): React.ReactElement {
                 className="min-h-[44px] text-xs"
                 onClick={() => dispatch({ type: 'NEXT_ROUND' })}
               >
-                下一回合
+                {state.matchStatus === 'REST' ? '開始下一回合' : '結束本回合'}
               </ActionButton>
               <ActionButton
                 tone={correctionMode ? 'warning' : 'neutral'}
@@ -239,6 +245,37 @@ export function SoloPage(): React.ReactElement {
             )}
           </div>
         </section>
+      )}
+
+      {state.pendingSuperiorityRound !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-xl border-2 border-amber-500/60 bg-panel p-5 text-center">
+            <h2 className="text-xl font-black text-amber-300">
+              第 {state.pendingSuperiorityRound} 回合平手
+            </h2>
+            <p className="mt-2 text-sm text-slate-300">
+              分數、旋轉技術得分、各分值技術數量與 Gam-jeom 次數皆相同，
+              <br />
+              請依優勢判定本回合勝方。
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <ActionButton
+                tone="neutral"
+                className="min-h-[64px] border-blue-300/60 bg-blue-side text-white"
+                onClick={() => dispatch({ type: 'DECIDE_SUPERIORITY', winner: 'BLUE' })}
+              >
+                {state.config.blueName} 勝
+              </ActionButton>
+              <ActionButton
+                tone="neutral"
+                className="min-h-[64px] border-red-300/60 bg-red-side text-white"
+                onClick={() => dispatch({ type: 'DECIDE_SUPERIORITY', winner: 'RED' })}
+              >
+                {state.config.redName} 勝
+              </ActionButton>
+            </div>
+          </div>
+        </div>
       )}
 
       {showLog && !mirrorMode && (
@@ -290,6 +327,26 @@ function EventLogDrawer({
             關閉
           </ActionButton>
         </div>
+        {state.roundResults.length > 0 && (
+          <div className="mb-3 rounded-lg border border-line bg-panel-2 p-2">
+            <h3 className="mb-1 text-sm font-bold text-slate-300">回合戰績</h3>
+            <ul className="flex flex-col gap-1 text-xs text-slate-300">
+              {state.roundResults.map((r) => (
+                <li key={r.round} className="flex justify-between gap-2">
+                  <span>
+                    第 {r.round} 回合 {r.blueScore} : {r.redScore}
+                  </span>
+                  <span className="font-bold">
+                    {r.winner === 'BLUE' ? state.config.blueName : state.config.redName} 勝
+                    <span className="ml-1 font-normal text-slate-500">
+                      （{r.reason === null ? '' : roundReasonLabel(r.reason)}）
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {items.length === 0 && <p className="text-sm text-slate-400">尚無紀錄</p>}
         <ul className="flex flex-col gap-2">
           {items.map((event) => (

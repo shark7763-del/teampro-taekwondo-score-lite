@@ -7,6 +7,7 @@ import type {
   MatchEvent,
   MatchStatus,
   RejectionReason,
+  RoundWinReason,
   Scores,
   TurningActionType,
 } from '../types'
@@ -288,6 +289,172 @@ export function computeScores(events: readonly MatchEvent[]): Scores {
     scores = applyEventToScores(scores, event)
   }
   return scores
+}
+
+/**
+ * 計算「單一回合」的分數。
+ *
+ * ⚠️ 三回合兩勝制下，每回合分數獨立歸零重新計算，
+ * 因此除了紀錄與統計之外，所有顯示與勝負判定都必須使用本函式，
+ * 不可把各回合分數加總。
+ */
+export function computeRoundScores(events: readonly MatchEvent[], round: number): Scores {
+  return computeScores(events.filter((e) => e.round === round))
+}
+
+/* ------------------------------------------------------------------ */
+/* 回合勝負判定（三回合兩勝制）                                        */
+/* ------------------------------------------------------------------ */
+
+export interface RoundOutcome {
+  winner: AthleteSide | null
+  reason: RoundWinReason | null
+  scores: Scores
+}
+
+/** 該回合中，某一方由旋轉技術取得的分數 */
+export function turningPointsInRound(
+  events: readonly MatchEvent[],
+  round: number,
+  side: AthleteSide,
+): number {
+  const reversed = reversedEventIds(events)
+  return events
+    .filter(
+      (e) =>
+        e.round === round &&
+        e.type === 'SCORE' &&
+        e.athleteSide === side &&
+        e.actionType !== null &&
+        isTurningAction(e.actionType) &&
+        !reversed.has(e.id),
+    )
+    .reduce((sum, e) => sum + e.pointsDelta, 0)
+}
+
+/** 該回合中，某一方各種分值技術的成立次數（key 為分值） */
+export function techniqueCountsInRound(
+  events: readonly MatchEvent[],
+  round: number,
+  side: AthleteSide,
+): Map<number, number> {
+  const reversed = reversedEventIds(events)
+  const counts = new Map<number, number>()
+  for (const e of events) {
+    if (e.round !== round) continue
+    if (e.type !== 'SCORE') continue
+    if (e.athleteSide !== side) continue
+    if (reversed.has(e.id)) continue
+    counts.set(e.pointsDelta, (counts.get(e.pointsDelta) ?? 0) + 1)
+  }
+  return counts
+}
+
+/**
+ * 判定一個回合的勝負。
+ *
+ * 判定順序（依 WT 三回合兩勝制）：
+ * 1. 該回合累積 Gam-jeom 達上限（預設 5 次）→ 對手直接贏得該回合
+ * 2. 分數較高者勝
+ * 3. 分數相同 → 旋轉技術得分較多者勝
+ * 4. 仍相同 → 高分值技術數量較多者勝（3 分 → 2 分 → 1 分）
+ * 5. 仍相同 → Gam-jeom 較少者勝
+ * 6. 仍相同 → 回傳 winner = null，交由主控／主審依優勢判定
+ *
+ * ⚠️ 正式賽在第 4 與第 5 之間另有「PSS 登錄擊中次數」一項，
+ *    本系統為無電子護具模式，無此資料，故略過並於文件標示。
+ */
+export function resolveRoundOutcome(
+  events: readonly MatchEvent[],
+  round: number,
+  ruleSetCode?: string,
+): RoundOutcome {
+  const rules = getRuleSet(ruleSetCode)
+  const scores = computeRoundScores(events, round)
+
+  // 1. Gam-jeom 達上限
+  const limit = rules.round.gamjeomLimitPerRound
+  if (scores.blueGamjeom >= limit && scores.redGamjeom < limit) {
+    return { winner: 'RED', reason: 'GAMJEOM_LIMIT', scores }
+  }
+  if (scores.redGamjeom >= limit && scores.blueGamjeom < limit) {
+    return { winner: 'BLUE', reason: 'GAMJEOM_LIMIT', scores }
+  }
+
+  // 2. 分數
+  if (scores.blueScore !== scores.redScore) {
+    return {
+      winner: scores.blueScore > scores.redScore ? 'BLUE' : 'RED',
+      reason: 'POINTS',
+      scores,
+    }
+  }
+
+  // 3. 旋轉技術得分
+  const blueTurning = turningPointsInRound(events, round, 'BLUE')
+  const redTurning = turningPointsInRound(events, round, 'RED')
+  if (blueTurning !== redTurning) {
+    return {
+      winner: blueTurning > redTurning ? 'BLUE' : 'RED',
+      reason: 'TURNING_POINTS',
+      scores,
+    }
+  }
+
+  // 4. 高分值技術數量（由高到低）
+  const blueCounts = techniqueCountsInRound(events, round, 'BLUE')
+  const redCounts = techniqueCountsInRound(events, round, 'RED')
+  const values = [...new Set([...blueCounts.keys(), ...redCounts.keys()])].sort((a, b) => b - a)
+  for (const value of values) {
+    const blue = blueCounts.get(value) ?? 0
+    const red = redCounts.get(value) ?? 0
+    if (blue !== red) {
+      return { winner: blue > red ? 'BLUE' : 'RED', reason: 'HIGHER_TECHNIQUE', scores }
+    }
+  }
+
+  // 5. Gam-jeom 較少
+  if (scores.blueGamjeom !== scores.redGamjeom) {
+    return {
+      winner: scores.blueGamjeom < scores.redGamjeom ? 'BLUE' : 'RED',
+      reason: 'FEWER_GAMJEOM',
+      scores,
+    }
+  }
+
+  // 6. 需優勢判定
+  return { winner: null, reason: null, scores }
+}
+
+/** 該回合是否已達分差門檻，應提前結束 */
+export function isPointGapReached(scores: Scores, ruleSetCode?: string): boolean {
+  const rules = getRuleSet(ruleSetCode)
+  return Math.abs(scores.blueScore - scores.redScore) >= rules.round.pointGapThreshold
+}
+
+/** 該回合是否有一方 Gam-jeom 已達上限 */
+export function isGamjeomLimitReached(scores: Scores, ruleSetCode?: string): boolean {
+  const limit = getRuleSet(ruleSetCode).round.gamjeomLimitPerRound
+  return scores.blueGamjeom >= limit || scores.redGamjeom >= limit
+}
+
+/** 三回合兩勝制需要贏幾個回合 */
+export function roundWinsNeeded(totalRounds: number, ruleSetCode?: string): number {
+  return getRuleSet(ruleSetCode).round.winsNeededOf(totalRounds)
+}
+
+const ROUND_REASON_LABEL: Record<RoundWinReason, string> = {
+  POINTS: '分數領先',
+  TURNING_POINTS: '旋轉技術得分較多',
+  HIGHER_TECHNIQUE: '高分值技術較多',
+  FEWER_GAMJEOM: 'Gam-jeom 較少',
+  GAMJEOM_LIMIT: '對手 Gam-jeom 達上限',
+  POINT_GAP: '分差達門檻',
+  SUPERIORITY: '優勢判定',
+}
+
+export function roundReasonLabel(reason: RoundWinReason): string {
+  return ROUND_REASON_LABEL[reason]
 }
 
 /* ------------------------------------------------------------------ */
