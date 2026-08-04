@@ -98,7 +98,7 @@ export function listRoomCodes(): string[] {
   }
 }
 
-export function createRoomConfig(overrides: Partial<RoomConfig> & { hostPin: string }): RoomConfig {
+export function createRoomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
   const now = Date.now()
   return {
     roomCode: generateRoomCode(),

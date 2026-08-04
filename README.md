@@ -24,10 +24,15 @@
 | 階段 | 內容 | 狀態 |
 |---|---|---|
 | 1 | 規則引擎、計時器、比賽狀態機、**單機模式 `/solo`**、大型計分板 | ✅ 完成，可實際使用 |
-| 2 | 建立比賽、六碼房間、QR Code、電視顯示端（mock） | ⬜ 開發中 |
-| 3 | Supabase migration / RLS / `submit_judge_press` RPC | ⬜ 未開始 |
-| 4 | 主控端、裁判端、Realtime、Presence | ⬜ 未開始 |
-| 5 | PWA 離線、E2E、部署 | ⬜ 未開始 |
+| 2 | 六碼房間、QR Code、電視顯示端、主控端、裁判端 | ✅ 完成，可實際使用 |
+| 3 | **跨裝置連線（Supabase Realtime Broadcast）**、跨裝置時鐘校正 | ✅ 完成，需設定環境變數 |
+| 4 | Supabase 資料表 / RLS / `submit_judge_press` RPC（伺服器端權威） | ⬜ 未開始 |
+| 5 | Playwright E2E | ⬜ 未開始 |
+
+> 階段 3 的做法是**主控端裝置持有比賽狀態，Supabase 只負責傳訊息**，
+> 因此不需要任何資料表與 RLS 就能真正跨裝置運作。
+> 代價是主控端的手機關掉，房間就結束（電視會保留最後正式比分）。
+> 階段 4 才會把權威搬到資料庫，讓主控端也能換裝置接手。
 
 詳細進度與手動測試步驟見 [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md)。
 
@@ -46,7 +51,7 @@ npm run dev          # http://localhost:5173
 ```bash
 npm run typecheck    # TypeScript 嚴格模式檢查
 npm run lint         # ESLint
-npm run test         # Vitest（54 條）
+npm run test         # Vitest（123 條）
 npm run build        # 產出 dist/
 npm run preview      # 預覽 build 結果
 ```
@@ -119,14 +124,26 @@ npm run preview      # 預覽 build 結果
 3. 點右上「鏡射模式」→ 操作面板隱藏、自動全螢幕，電視只看到大型計分板。
 4. 需要操作時點畫面最下方長條即可叫回操作面板。
 
-### 2. 手機主控 ＋ 電視獨立顯示（階段 2）
+### 2. 電視全螢幕顯示 ＋ 手機按分數（最常用）
 
-電視開 `/display/<六碼房間代碼>`，手機留在 `/operator/<六碼房間代碼>`。
+1. **電視**用瀏覽器開啟本系統 → 首頁點「📺 這台是電視」。
+   畫面立刻出現一組六碼房間代碼與一張 QR Code，電視上**完全不需要打字**。
+2. **手機**掃描電視上的 QR Code（或在手機開首頁 →「📱 手機主控」輸入六碼代碼）。
+3. 手機上設定藍紅方姓名與回合時間 → 開賽。
+4. 電視自動切換成大型計分板；在電視上點右上角「全螢幕」即可滿版。
+5. 之後計時、計分、Gam-jeom、復原全部在手機操作，電視只負責顯示。
 
-### 3. 兩台裁判手機 ＋ 一台電視（階段 3–4）
+手機就是這場比賽的**唯一權威**：所有分數都由手機算好之後廣播出去，
+電視與裁判端只能接收。手機重新整理不會遺失比賽（存在該台手機的 localStorage）。
 
-裁判 A 開 `/judge/<房間代碼>/A`、裁判 B 開 `/judge/<房間代碼>/B`，
-兩人在確認時間窗內按下**相同選手、相同技術**，伺服器才正式加分一次。
+> ⚠️ 這個情境需要設定 Supabase（見下方「跨裝置連線設定」）。
+> 未設定時畫面會標示「本機模擬（僅同一瀏覽器）」，另一支手機掃 QR Code 會連不上。
+
+### 3. 兩台裁判手機 ＋ 一台電視
+
+在手機主控端點左上角的「房間 · 連線」→ 切換為**雙裁判** → 讓裁判 A、B 各自掃描該面板上的 QR Code。
+兩人必須在確認時間窗內按下**相同選手、相同技術**才會正式加分一次；
+同一位裁判自己連按兩下不會成立，主控端也不會顯示另一位裁判按了什麼。
 
 ---
 
@@ -170,12 +187,16 @@ src/
 ├─ timer/          計時器純函式（時間差重算）+ 測試
 ├─ match/          比賽狀態機（單機與未來伺服器共用判斷）+ 測試
 ├─ storage/        soloStorage（比賽資料）、preferences（偏好與上次設定）+ 測試
-├─ sync/           displaySync：顯示端同步的 service 層（BroadcastChannel／未來 WebSocket）
+├─ sync/           displaySync：同瀏覽器第二視窗（#/mirror）的同步 service 層
+├─ pairing/        雙裁判確認的配對引擎（未來 RPC 的行為規格）+ 測試
+├─ room/           多裝置房間：roomChannel（Supabase Realtime／BroadcastChannel 兩種傳輸）、
+│                  useRoom（主控端 host／電視與裁判 client）、clock（時鐘校正）、
+│                  roomStorage、links + 測試
 ├─ hooks/          useNow / useSoloMatch / useFullscreen / useWakeLock
-├─ lib/            震動與 WebAudio 提示音
+├─ lib/            震動與 WebAudio 提示音、supabaseClient
 ├─ components/     顯示端：Scoreboard｜控制端：ControlPanel、ScoreButtons(SideControls)
-│                  流程：RoundEndPanel、SetupPanel、ConfirmModal、LongPressButton、ui
-└─ pages/          HomePage、SoloPage、MirrorDisplayPage、階段 2–4 頁面占位
+│                  流程：RoundEndPanel、SetupPanel、ConfirmModal、LongPressButton、QrCode、ui
+└─ pages/          HomePage、SoloPage、MirrorDisplayPage、RoomPages（電視／主控／裁判／加入）
 ```
 
 **顯示端與控制端已完全分離**：`Scoreboard` 不含任何操作邏輯，`ControlPanel` 不含任何比分顯示邏輯，
@@ -183,39 +204,73 @@ src/
 
 ### 同一台電腦的第二視窗顯示
 
-首頁 →「顯示端」（或直接開 `#/mirror`），可在筆電接投影機時把第二個視窗設為純計分板，
-透過 `BroadcastChannel` 即時同步，**不需要任何後端**。
-跨裝置（手機控制＋電視顯示）需要房間碼與後端，**尚未實作，也不會假裝可用**。
+首頁 →「顯示端（同一台電腦第二視窗）」（或直接開 `#/mirror`），
+可在筆電接投影機時把第二個視窗設為純計分板，透過 `BroadcastChannel` 即時同步，
+**不需要任何後端、不需要房間代碼**。真正跨裝置請改用上面的情境 2。
 
 ---
 
-## 安全假設（設計原則，隨階段 3 實作）
+## 安全假設
 
-1. **六碼房間代碼不是管理權限**，只提供觀看；任何寫入都需要 token。
-2. 主控端以 **PIN → 伺服器 RPC 驗證 → 短期 token**，PIN 以 pgcrypto 雜湊儲存，
-   **不在前端比對、不存明碼**。
-3. 裁判 A 與 B 使用**不同的 join token**，一個席位同時只有一個啟用裝置。
-4. **前端不能直接修改正式比分**：`matches.blue_score / red_score` 只能由 RPC 在交易內更新。
-5. `submit_judge_press` 於交易第一行取得 advisory lock，
+### 目前（階段 3：主控端權威）
+
+1. **主控端裝置是唯一權威**。裁判端與電視端只能接收廣播出去的正式狀態，
+   不能自行改分數；裁判按鍵一律送到主控端，由 `pairingEngine` 判定後才寫入。
+2. `client_event_id` 讓**重送不會重複計分**；同一位裁判連按兩次不可能配對成立。
+3. **六碼房間代碼就是加入房間所需的全部資訊**（32⁶ ≈ 10 億種組合、4 小時失效）。
+   這對訓練賽足夠，但**不足以防止有心人干擾正式比賽**——這也是階段 4 存在的理由。
+   先前版本的「主控 PIN」是在前端比對的，並非真正的安全機制，已移除以免造成誤解。
+4. **前端只使用 anon key**；service role key 絕不可進入前端或 `VITE_` 變數。
+5. 本階段**沒有任何資料表**，Supabase 僅作為訊息轉送，因此不存在資料外洩面。
+
+### 階段 4 目標（伺服器端權威）
+
+6. 主控端以**伺服器 RPC 驗證 → 短期 token**取得操作權，憑證不在前端比對。
+7. **前端不能直接修改正式比分**：`matches.blue_score / red_score` 只能由 RPC 在交易內更新。
+8. `submit_judge_press` 於交易第一行取得 advisory lock，
    確保兩台手機**完全同時送出也只加一次分**。
-6. `client_event_id` 為 UNIQUE，**重送不會重複計分**。
-7. 啟用 Supabase RLS；anon 角色不得 UPDATE 任何比分欄位。
-8. **前端只使用 anon key**；service role key 絕不可進入前端或 `VITE_` 變數。
-9. 房間有 `expires_at`（預設 4 小時），過期後拒絕所有新操作。
-10. 裁判按鍵 RPC 具備 rate limit（每裝置每秒 3 次）與 400 毫秒同技術冷卻。
+9. 啟用 Supabase RLS；anon 角色不得 UPDATE 任何比分欄位。
+10. 裁判按鍵 RPC 具備 rate limit（每裝置每秒 3 次）與同技術冷卻。
 
 ---
 
-## 環境變數
+## 跨裝置連線設定（Supabase）
 
-複製 `.env.example` 為 `.env`：
+電視與手機是兩台不同的裝置，一定要有一個共同的傳訊管道。
+本系統使用 **Supabase Realtime Broadcast**，**不需要建立任何資料表，也不需要設定 RLS**。
 
-```
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-public-key
-```
+### 一次性設定
 
-未設定時系統自動使用 mock adapter，**單機模式 `/solo` 完全不受影響**。
+1. 到 <https://supabase.com> 建立免費專案（區域建議 **Southeast Asia (Singapore)**）。
+2. Project Settings → API，複製 **Project URL** 與 **anon public** key。
+3. 本機：複製 `.env.example` 為 `.env` 並填入：
+
+   ```
+   VITE_SUPABASE_URL=https://xxxxxxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
+   ```
+
+4. 線上版：到 GitHub repo → Settings → Secrets and variables → Actions，
+   新增同名的兩個 **Repository secrets**，再 push 一次觸發重新建置。
+
+### 沒設定會怎樣
+
+- 單機模式 `/solo` **完全不受影響**，仍可離線使用。
+- 多裝置房間退回 BroadcastChannel，只有**同一台裝置的同一個瀏覽器**分頁能互通，
+  畫面上會明確標示「本機模擬（僅同一瀏覽器）」並說明原因，**不會假裝可用**。
+
+### 為什麼 anon key 出現在前端沒關係
+
+anon key 本來就是設計成公開的（會出現在打包後的 JS），真正的保護一律靠 RLS。
+本階段沒有建立任何資料表，Supabase 只被用來轉送房間訊息，
+最壞情況是有人猜中六碼房間代碼（32⁶ ≈ 10 億種組合、4 小時失效）後看到比分。
+
+### 跨裝置時鐘校正
+
+計時器只存 `timerStartedAt + remainingMsAtStart`，各端以時間差重算。
+兩台裝置的系統時鐘可能差好幾秒，因此每則狀態都帶主控端的送出時間，
+接收端據此估算時鐘差並平滑處理（`src/room/clock.ts`），
+電視上的秒數才會跟手機一致，也不會因為單次網路抖動而跳動。
 
 ---
 
@@ -229,7 +284,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
 
 ## 已知限制
 
-- 階段 1 僅單機模式可實際使用；多人房間、雙裁判、Realtime 尚未完成。
+- **主控端的手機關掉，房間就結束**：比賽狀態存在主控端裝置上，Supabase 只轉送訊息。
+  電視會保留最後一次收到的正式比分並顯示「主控端未連線」。同一支手機重新整理可以續打。
+- 主控端**不能中途換裝置**接手（要等階段 4 把權威搬到資料庫）。
+- 同一個房間代碼若有兩台裝置都以主控端開啟並各自建立比賽，狀態會互相覆蓋，
+  目前沒有偵測機制。
+- 未設定 Supabase 環境變數時，多裝置房間退回**同一個瀏覽器的分頁之間**才能互通。
 - `#/mirror` 顯示端**只能在同一個瀏覽器的另一個視窗**運作（BroadcastChannel），無法跨裝置。
 - 尚未導入 Playwright E2E；目前以 React Testing Library 的整合測試涵蓋操作流程。
 - 單機模式資料存在該台手機的 localStorage，換手機不會同步。

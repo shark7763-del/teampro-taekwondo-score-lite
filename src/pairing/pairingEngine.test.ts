@@ -54,10 +54,7 @@ describe('雙裁判配對引擎', () => {
 
   it('#13 A、B 按相同選手與相同技術，在時間窗內成立一次', () => {
     const first = submitJudgePress(ctx(), press())
-    const second = submitJudgePress(
-      ctx({ presses: first.presses, now: T0 + 400 }),
-      press(seatB),
-    )
+    const second = submitJudgePress(ctx({ presses: first.presses, now: T0 + 400 }), press(seatB))
     expect(second.outcome.status).toBe('MATCHED')
     expect(second.matchedGroup).toHaveLength(2)
     // 兩筆共用同一個 matchedGroupId → 分數只會加一次
@@ -96,17 +93,17 @@ describe('雙裁判配對引擎', () => {
       press(seatB),
     )
     expect(second.outcome.status).toBe('WAITING')
-    expect(pressStatus(second.presses, first.presses[0]!.id, { now: T0 + WINDOW + 1, confirmationWindowMs: WINDOW })).toBe(
-      'EXPIRED',
-    )
+    expect(
+      pressStatus(second.presses, first.presses[0]!.id, {
+        now: T0 + WINDOW + 1,
+        confirmationWindowMs: WINDOW,
+      }),
+    ).toBe('EXPIRED')
   })
 
   it('剛好等於時間窗仍算在窗內（邊界值）', () => {
     const first = submitJudgePress(ctx(), press())
-    const second = submitJudgePress(
-      ctx({ presses: first.presses, now: T0 + WINDOW }),
-      press(seatB),
-    )
+    const second = submitJudgePress(ctx({ presses: first.presses, now: T0 + WINDOW }), press(seatB))
     expect(second.outcome.status).toBe('MATCHED')
   })
 

@@ -62,6 +62,16 @@ export default defineConfig(({ command }) => ({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    /*
+     * 測試一律走本機傳輸（BroadcastChannel）。
+     * 開發機上有 .env 時 Vitest 也會載入，若不清掉，
+     * 房間相關測試會真的嘗試連 Supabase，結果取決於有沒有網路——那不是測試該有的行為。
+     * 真實的 Realtime 連線屬於手動測試範圍，見 IMPLEMENTATION_PLAN.md。
+     */
+    env: {
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+    },
     coverage: {
       provider: 'v8',
       include: ['src/rules/**', 'src/timer/**', 'src/match/**', 'src/pairing/**'],

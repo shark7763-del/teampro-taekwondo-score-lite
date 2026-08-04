@@ -2,7 +2,7 @@
 
 **專案**：TeamPro Taekwondo Score Lite ／ TeamPro 跆拳道簡易計分系統
 **路徑**：`D:\TeamPro跆拳道簡易計分系統\`
-**最後更新**：2026-08-02（階段 1 完成）
+**最後更新**：2026-08-05（階段 2–3 完成：真正的跨裝置連線）
 
 > ⚠️ 本系統供訓練賽及模擬賽使用，非 WT 認證競賽設備。
 
@@ -46,7 +46,7 @@
 
 - [x] 專案骨架：React 19 + TS(strict) + Vite 8 + Tailwind 4 + React Router 8
 - [x] 品質工具：ESLint 10（`no-explicit-any: error`）+ Prettier + Vitest 4 + RTL
-- [x] 路由：`/`、`/solo`、`/create`、`/join`、`/display/:roomCode`、`/operator/:roomCode`、`/judge/:roomCode/:seat`
+- [x] 路由：`/`、`/solo`、`/mirror`、`/join`、`/display`、`/display/:roomCode`、`/operator/:roomCode`、`/judge/:roomCode/:seat`
 - [x] 共用型別 `src/types/index.ts`（含 PSS、三裁判 seat C、`required_confirmations` 對應欄位預留）
 - [x] 規則引擎 `src/rules/`：分值換算、Gam-jeom 判定、PSS 拆解、事件工廠、復原邏輯
 - [x] 計時器 `src/timer/timer.ts`：純函式、時間差重算、`M:SS` 與最後 10 秒 `9.4` 格式
@@ -76,13 +76,6 @@
 - [x] 同鍵防連點由 400ms 收斂為 **180ms**，不影響高速計分
 - [x] 測試 71 → **88 條**
 
-**尚未完成（依驗算刪減，屬後續階段）**
-
-- [ ] 建立比賽表單、六碼房間、QR Code（階段 2）
-- [ ] Supabase migration / RLS / RPC（階段 3）
-- [ ] 雙裁判配對與 Realtime（階段 3–4）
-- [ ] PWA service worker、Playwright E2E（階段 5）
-
 **品質檢查（階段 1 結果）**
 
 ```
@@ -110,22 +103,52 @@ npm run dev
 9. 重新整理頁面 → 分數、回合、剩餘時間都正確（時間以時間差重算）。
 10. 關掉 Wi‑Fi／飛航模式 → 單機模式所有功能照常運作。
 
+**跨裝置手動測試（需先設定 `.env` 的 `VITE_SUPABASE_*`）**
+
+1. 電腦（當電視）開首頁 →「📺 這台是電視」→ 應出現六碼代碼與 QR，
+   徽章顯示「雲端連線」（若顯示「本機模擬」表示環境變數沒吃到，重開 `npm run dev`）。
+2. 手機（**用手機網路，不要連同一個 Wi-Fi**）掃 QR → 進入設定畫面 → 開賽。
+3. 電視應在 1 秒內切換成計分板；手機按 +2 → 電視同步跳分。
+4. 比對電視與手機的秒數：應完全一致（時鐘校正生效）。
+5. 電視點右上「全螢幕」→ 滿版且無捲動。
+6. 手機開啟飛航模式 8 秒 → 電視顯示「主控端未連線，顯示最後正式比分」，
+   數字停在最後一筆正式比分；關掉飛航模式後應自動恢復同步。
+7. 手機重新整理 → 比分、回合、剩餘時間都還在（存在該台手機的 localStorage）。
+8. 主控端點「房間 · 連線」→ 切換雙裁判 → 第三支手機掃裁判 A、第四支掃裁判 B；
+   只有一位按時顯示「等待另一位裁判確認」且比分不變，兩位按同一技術才加分一次。
+
 ---
 
-### ⬜ 階段 2：房間與電視端（mock adapter，尚未連 Supabase）
+### ✅ 階段 2：房間、電視端與裁判端（2026-08-05 完成）
 
-- [ ] `/create`：**只露出 3 個欄位**（藍方姓名、紅方姓名、裁判人數），其餘進階設定摺疊
-- [ ] 六碼房間代碼產生 + QR Code（電視／主控／裁判 A／裁判 B 四組）
-- [ ] `/display/:roomCode` 電視端（沿用 `Scoreboard`），含連線狀態列
-- [ ] `ScoreStore` 介面 + `LocalStore` / `MockRoomStore` 實作（無 Supabase 也能完整操作）
-- [ ] 配對狀態機純函式 `src/pairing/pairingEngine.ts` + **13 條測試**
-      （A 單獨／B 單獨／成立／不同選手／不同技術／逾時／同裁判連按／重送冪等／同時送出／已配對不可再配／舊事件不配新事件／結束後拒絕／暫停依設定）
+- [x] 六碼房間代碼產生 + QR Code
+- [x] `/display/:roomCode` 電視端（沿用 `Scoreboard`），含連線狀態列
+- [x] `/operator/:roomCode` 主控端、`/judge/:roomCode/:seat` 裁判端
+- [x] 配對狀態機純函式 `src/pairing/pairingEngine.ts` + 測試
 
-### ⬜ 階段 3：Supabase
+### ✅ 階段 3：真正的跨裝置連線（2026-08-05 完成）
+
+**採取的路線**：主控端裝置持有比賽狀態，Supabase **Realtime Broadcast** 只負責轉送訊息。
+因此不需要建立任何資料表、不需要 migration、不需要 RLS 就能真正跨裝置運作。
+代價是主控端關閉即房間結束、主控端不能換裝置接手 —— 這兩點留給階段 4。
+
+- [x] `src/lib/supabaseClient.ts`：未設定環境變數時回傳 null，呼叫端自動退回本機模式
+- [x] `src/room/roomChannel.ts`：`cloud`（Supabase Realtime）／`local`（BroadcastChannel）
+      兩種傳輸共用同一組介面；未就緒時的送出訊息會排隊（上限 8 則，避免堆積過期狀態）
+- [x] `src/room/clock.ts`：跨裝置時鐘校正（每則狀態帶主控端 `sentAt`，接收端平滑估算 offset）
+- [x] 主控端心跳（2 秒）：晚加入的電視立刻看到比分、用戶端據此判斷斷線、提供校正樣本
+- [x] **流程改為電視開房間**：電視點一下就產生代碼與 QR，手機掃碼成為主控，
+      電視上完全不需要打字（原本 `/create` 先在手機建房、電視卻無法掃碼的流程不可用）
+- [x] 移除「主控 PIN」：它在前端比對，並非真正的安全機制，留著只會造成誤解
+- [x] 三個頁面都誠實顯示目前是「雲端連線」還是「本機模擬（僅同一瀏覽器）」
+- [x] `.github/workflows/deploy.yml` 帶入 `VITE_SUPABASE_*` secrets
+- [x] 測試 88 → **123 條**（新增：時鐘校正 5、訊息通道 6、電視＋主控整合 3）
+
+### ⬜ 階段 4：Supabase 伺服器端權威
 
 - [ ] migration：`rooms` / `matches` / `devices` / `judge_presses` / `score_events` / `rule_sets`
 - [ ] RLS policy（anon 一律不可 UPDATE `matches`；讀取走 security definer RPC）
-- [ ] RPC：`create_room`、`join_room`、`verify_host_pin`（pgcrypto，PIN 不存明碼、不在前端比對）
+- [ ] RPC：`create_room`、`join_room`、主控端憑證驗證（**一律在伺服器端**，前端不做比對）
 - [ ] RPC：`submit_judge_press`
       — 第一行 `pg_advisory_xact_lock(hashtext(match_id::text))`，全程單一交易
       — `client_event_id` UNIQUE，重送回傳第一次結果
@@ -134,20 +157,18 @@ npm run dev
 - [ ] RPC：`apply_gamjeom`（後端再次驗證剩餘時間 ≤ 10s）、`reverse_event`（`reversed_event_id` UNIQUE）、`advance_round(expected_round)`
 - [ ] DB 併發測試 3 條（同時送出、重送、同 seat 連按）
 
-### ⬜ 階段 4：三端接線
-
-- [ ] `/operator/:roomCode`（PIN → 短期 token，存 sessionStorage）
-- [ ] `/judge/:roomCode/:seat`（橫向、等待確認狀態、不顯示另一位裁判按了什麼）
+- [ ] 主控端改為向資料庫送命令，**主控端關閉或換裝置後可由另一台接手**
 - [ ] Realtime：DB Change（正式）＋ Presence（在線）＋ Broadcast（僅動畫）
 - [ ] 重連流程：refetch `matches` → 覆蓋本機 → 顯示「已重新同步」
 - [ ] 離線／逾時三態：送出中 / 已成立 / 未知（可用同 id 重送），**禁止樂觀顯示成立**
+- [ ] 偵測「同一房間有兩個主控端」並明確提示（目前會互相覆蓋）
 
-### ⬜ 階段 5：PWA 與品質
+### ⬜ 階段 5：品質
 
-- [ ] `vite-plugin-pwa`：離線可開、`/solo` 完全離線可用
+- [x] `vite-plugin-pwa`：離線可開、`/solo` 完全離線可用
+- [x] README 完整化（Supabase 設定、部署、手機加入主畫面、雙裁判測試方式）
+- [x] 部署（GitHub Pages + HashRouter）
 - [ ] Playwright E2E 4 條
-- [ ] README 完整化（Supabase 設定、部署、手機加入主畫面、雙裁判測試方式）
-- [ ] 部署（Cloudflare Pages 或 GitHub Pages + hash router 評估）
 
 ---
 

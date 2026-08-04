@@ -12,10 +12,16 @@ import type { PressOutcome } from '../types'
 
 export type RoomRole = 'OPERATOR' | 'JUDGE' | 'DISPLAY'
 
+/**
+ * 房間設定。
+ *
+ * ⚠️ 這裡刻意沒有密碼欄位：主控權來自「誰先用主控端連結建立比賽」，
+ *    6 碼房間代碼就是加入房間所需的全部資訊。
+ *    這對訓練賽足夠（代碼有 32^6 ≈ 10 億種組合且 4 小時後失效），
+ *    但不適合用在需要防止惡意干擾的正式比賽。
+ */
 export interface RoomConfig {
   roomCode: string
-  /** 主控 PIN。⚠️ mock 模式存在本機，僅供流程驗證，不是真正的安全機制 */
-  hostPin: string
   judgeMode: JudgeMode
   confirmationWindowMs: number
   createdAt: number
@@ -58,3 +64,13 @@ export const ROOM_TTL_MS = 4 * 60 * 60 * 1_000
 /** 超過這個時間沒有心跳就視為離線 */
 export const PRESENCE_TIMEOUT_MS = 6_000
 export const PRESENCE_PING_MS = 2_000
+/**
+ * 主控端定期重播完整狀態的間隔。
+ * 除了狀態改變時立刻廣播之外還需要心跳，理由有三：
+ *  1. 晚加入的電視／裁判不必等下一次計分就能看到目前比分
+ *  2. 用戶端據此判斷主控端是否還在線
+ *  3. 提供時鐘校正樣本（見 clock.ts）
+ */
+export const STATE_HEARTBEAT_MS = 2_000
+/** 超過這個時間沒收到主控端的 STATE 就視為斷線 */
+export const HOST_TIMEOUT_MS = 7_000

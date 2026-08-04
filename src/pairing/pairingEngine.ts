@@ -1,10 +1,4 @@
-import type {
-  ActionType,
-  AthleteSide,
-  JudgeSeat,
-  PressOutcome,
-  RejectionReason,
-} from '../types'
+import type { ActionType, AthleteSide, JudgeSeat, PressOutcome, RejectionReason } from '../types'
 import { createId } from '../rules/ruleEngine'
 
 /**
@@ -76,7 +70,10 @@ export interface PairingResult {
 }
 
 /** 事件是否已超過確認時間窗 */
-export function isExpired(press: JudgePress, ctx: { now: number; confirmationWindowMs: number }): boolean {
+export function isExpired(
+  press: JudgePress,
+  ctx: { now: number; confirmationWindowMs: number },
+): boolean {
   return ctx.now - press.serverCreatedAt > ctx.confirmationWindowMs
 }
 

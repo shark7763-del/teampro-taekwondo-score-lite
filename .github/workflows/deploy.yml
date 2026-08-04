@@ -31,6 +31,11 @@ jobs:
       - name: Test
         run: npm run test
       - name: Build
+        # 跨裝置連線所需。未設定 secrets 時仍會建置成功，
+        # 但線上版會退回「本機模擬」模式（只有同一個瀏覽器的分頁能互通）。
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

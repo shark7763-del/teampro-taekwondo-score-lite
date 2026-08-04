@@ -59,19 +59,31 @@ export function HomePage(): React.ReactElement {
         </Link>
 
         <Link
+          to="/display"
+          className="flex min-h-[104px] flex-col justify-center rounded-xl border-2 border-sky-500/50 bg-sky-600/15 p-4 transition-colors hover:bg-sky-600/25 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
+        >
+          <span className="text-xl font-black">📺 這台是電視</span>
+          <span className="mt-1 text-sm text-slate-300">
+            顯示房間代碼與 QR Code，教練用手機掃碼後即可計分
+          </span>
+        </Link>
+
+        <Link
+          to="/join"
+          className="flex min-h-[104px] flex-col justify-center rounded-xl border-2 border-line bg-panel p-4 transition-colors hover:bg-panel-2 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
+        >
+          <span className="text-xl font-black">📱 手機主控（輸入房號）</span>
+          <span className="mt-1 text-sm text-slate-300">
+            掃不到 QR Code 時，改用電視上的 6 碼房間代碼加入
+          </span>
+        </Link>
+
+        <Link
           to="/mirror"
           className="flex min-h-[76px] flex-col justify-center rounded-xl border border-line bg-panel p-4 hover:bg-panel-2 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
         >
           <span className="text-lg font-bold">顯示端（同一台電腦第二視窗）</span>
-          <span className="text-sm text-slate-400">投影機／第二螢幕用的純計分板</span>
-        </Link>
-
-        <Link
-          to="/create"
-          className="flex min-h-[76px] flex-col justify-center rounded-xl border border-line bg-panel p-4 hover:bg-panel-2 focus-visible:ring-4 focus-visible:ring-white/60 focus-visible:outline-none"
-        >
-          <span className="text-lg font-bold">建立多人比賽</span>
-          <span className="text-sm text-slate-400">電視＋主控＋裁判 A／B（第二階段）</span>
+          <span className="text-sm text-slate-400">投影機／第二螢幕用的純計分板，不需要連線</span>
         </Link>
 
         {recent !== null ? (
@@ -114,11 +126,13 @@ export function HomePage(): React.ReactElement {
             投到電視後，開啟「鏡射模式」隱藏操作面板。
           </li>
           <li>
-            <b>手機＋電視獨立顯示</b>：建立多人比賽，電視掃描顯示端 QR Code，手機留在主控端。
+            <b>電視＋手機（最常用）</b>：先在電視瀏覽器點「這台是電視」，畫面會出現房間代碼與 QR
+            Code；教練用手機掃碼進入主控端，設定選手後開賽。 電視只負責顯示大字比分，
+            計分、計時全在手機上。
           </li>
           <li>
-            <b>兩台裁判手機</b>：裁判 A 與 B 分別掃描各自的 QR Code，兩人在確認時間窗內按下
-            <b>相同選手、相同技術</b>才會正式加分一次。
+            <b>兩台裁判手機</b>：主控端點左上角的「房間 · 連線」，切換為雙裁判並讓裁判 A、B 各自掃描
+            QR Code。兩人在確認時間窗內按下<b>相同選手、相同技術</b>才會正式加分一次。
           </li>
         </ol>
         <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
