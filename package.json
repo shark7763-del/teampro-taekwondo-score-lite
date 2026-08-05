@@ -14,7 +14,11 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "mutation": "stryker run",
+    "metrics": "node scripts/metrics.mjs",
+    "verify-locked": "node scripts/verify-locked.mjs",
+    "gate": "npm run verify-locked && npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
@@ -25,6 +29,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
@@ -40,6 +46,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "fake-indexeddb": "^6.2.5",
+    "fast-check": "^4.9.0",
     "globals": "^17.8.0",
     "jsdom": "^30.0.1",
     "oxlint": "^1.75.0",

@@ -38,3 +38,8 @@ supabase/.branches
 *.njsproj
 *.sln
 *.sw?
+
+# AutoResearch 實驗紀錄：刻意不進 git，這樣 git reset 不會把紀錄一起洗掉
+results.tsv
+reports/
+.stryker-tmp/

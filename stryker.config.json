@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "AutoResearch 主 metric。⚠️ 鎖定檔案，實驗迴圈不得修改。突變體只從規則層產生：那是唯一『算錯就是比賽算錯』的程式碼，也是最需要被測試釘死的部分。",
+  "packageManager": "npm",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.mutation.config.ts"
+  },
+  "reporters": ["json", "clear-text", "progress"],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "clearTextReporter": {
+    "maxTestsToLog": 0
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/rules/**/*.ts",
+    "src/match/**/*.ts",
+    "src/timer/**/*.ts",
+    "src/pairing/**/*.ts",
+    "!src/**/*.test.ts"
+  ],
+  "timeoutMS": 15000,
+  "concurrency": 4,
+  "thresholds": {
+    "high": 90,
+    "low": 75,
+    "break": null
+  }
+}
