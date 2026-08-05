@@ -4,6 +4,7 @@ import type { MatchCommand } from '../match/matchCore'
 import { canAcceptScore, reduceMatch } from '../match/matchCore'
 import { submitJudgePress, type JudgePress } from '../pairing/pairingEngine'
 import { getRuleSet } from '../rules/ruleSets'
+import { computeRemainingMs } from '../timer/timer'
 import { createRoomChannel, expectedTransport, type RoomChannel } from './roomChannel'
 import type { RoomTransport } from './roomChannel'
 import { loadRoom, saveRoom, getDeviceId } from './roomStorage'
@@ -100,9 +101,12 @@ export function useRoomHost(roomCode: string): RoomHostApi {
     })
   }, [])
 
+  const timeUpHandledRef = useRef('')
+
   const initialize = useCallback((nextConfig: RoomConfig, nextMatch: MatchState) => {
     saveRoom(nextConfig, nextMatch)
     pressesRef.current = []
+    timeUpHandledRef.current = ''
     setConfig(nextConfig)
     setState(nextMatch)
   }, [])
@@ -217,6 +221,29 @@ export function useRoomHost(roomCode: string): RoomHostApi {
     const id = window.setInterval(broadcast, STATE_HEARTBEAT_MS)
     return () => window.clearInterval(id)
   }, [broadcast])
+
+  /*
+   * 回合時間到。
+   *
+   * 房間模式的權威在主控端這台裝置，所以結算必須由這裡觸發——
+   * 電視端與裁判端只是顯示，它們算出剩餘時間歸零也不能改變正式狀態。
+   * 少了這段，回合倒數歸零後畫面會停在 0.0 秒卻永遠不結算。
+   *
+   * 用 ref 記住已處理過的回合，避免同一個回合重複結算。
+   */
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const current = stateRef.current
+      if (current === null) return
+      if (current.timer.timerStatus !== 'RUNNING') return
+      if (computeRemainingMs(current.timer, Date.now()) > 0) return
+      const key = `${current.config.matchId}-${current.currentRound}-${current.matchStatus}`
+      if (timeUpHandledRef.current === key) return
+      timeUpHandledRef.current = key
+      dispatch({ type: 'TIME_UP' })
+    }, 100)
+    return () => window.clearInterval(id)
+  }, [dispatch])
 
   /* 清掉逾時未回報的裝置 */
   useEffect(() => {

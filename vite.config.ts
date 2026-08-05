@@ -61,7 +61,7 @@ export default defineConfig(({ command }) => ({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.{ts,tsx}'],
     /*
      * 測試一律走本機傳輸（BroadcastChannel）。
      * 開發機上有 .env 時 Vitest 也會載入，若不清掉，
