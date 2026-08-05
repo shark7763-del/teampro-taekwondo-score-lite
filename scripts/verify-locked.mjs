@@ -43,6 +43,17 @@ const LOCKED_GLOBS = [
   '.autoresearch/program.md',
 ]
 
+/**
+ * `src/rules`、`src/match` 等目錄下的測試檔**不鎖**。
+ *
+ * Loop A 的定義就是「只能改測試檔」，把測試一起鎖死等於整個迴圈無事可做。
+ * 真正不可動的是 production code 與 `tests/golden/**`（規則的行為契約）。
+ */
+function isUnlockedTest(path) {
+  if (path.startsWith('tests/golden/')) return false
+  return /\.test\.(ts|tsx)$/.test(path)
+}
+
 function walk(target) {
   const abs = join(ROOT, target)
   if (!existsSync(abs)) return []
@@ -53,6 +64,7 @@ function walk(target) {
 function collect() {
   const files = LOCKED_GLOBS.flatMap(walk)
     .map((f) => relative(ROOT, join(ROOT, f)).split(sep).join('/'))
+    .filter((f) => !isUnlockedTest(f))
     .filter((f, i, arr) => arr.indexOf(f) === i)
   files.sort()
   return files

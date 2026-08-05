@@ -43,3 +43,5 @@ supabase/.branches
 results.tsv
 reports/
 .stryker-tmp/
+run.log
+gate.log
