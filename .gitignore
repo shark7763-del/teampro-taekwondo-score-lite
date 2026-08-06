@@ -45,3 +45,6 @@ reports/
 .stryker-tmp/
 run.log
 gate.log
+
+# 你 feat/poomsae-score-autoresearch 分支的評估產物，不進 main
+evaluation/latest.json
