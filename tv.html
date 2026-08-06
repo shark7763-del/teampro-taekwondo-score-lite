@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TeamPro 跆拳道計分 — 電視顯示端</title>
+    <!--
+      電視相容版計分板。
+
+      為什麼要有這一支：主程式用 Tailwind 4，產出的 CSS 全部包在 @layer 裡，
+      還大量使用 oklch() 與 color-mix()，需要 Chrome 111+ / Safari 16.4+（2023 年）。
+      電視內建瀏覽器通常遠比這舊，遇到不認識的 @layer 會把整個區塊丟掉，
+      結果就是「畫面有字但完全沒有樣式」。
+
+      所以這一支刻意做到最低需求：
+        - 不用 React、不用 Tailwind、不用 supabase-js（三者都需要新瀏覽器）
+        - CSS 只用 CSS 2.1 + flexbox，不用 @layer / oklch / color-mix / dvh / grid / CSS 變數
+        - JS 只用 ES5：var、function、字串相接，不用 const/let、箭頭函式、樣板字串
+        - 直接用原生 WebSocket 講 Supabase Realtime 的 Phoenix 協定（已實測可行）
+
+      改這個檔案時請維持以上限制，否則等於白做。
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #05070c;
+        color: #ffffff;
+        font-family: 'Noto Sans CJK TC', 'Microsoft JhengHei', Arial, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        height: 100%;
+        display: -webkit-box;
+        display: -webkit-flex;
+        display: flex;
+        -webkit-flex-direction: column;
+        flex-direction: column;
+      }
+
+      /* ---------- 等待連線畫面 ---------- */
+      #wait {
+        height: 100%;
+        display: -webkit-flex;
+        display: flex;
+        -webkit-flex-direction: column;
+        flex-direction: column;
+        -webkit-justify-content: center;
+        justify-content: center;
+        -webkit-align-items: center;
+        align-items: center;
+        text-align: center;
+      }
+      #wait .brand {
+        color: #34d399;
+        font-size: 2.2vh;
+        letter-spacing: 0.4em;
+        margin-bottom: 2vh;
+      }
+      #wait .label {
+        color: #94a3b8;
+        font-size: 3.2vh;
+        margin-bottom: 1vh;
+      }
+      #code {
+        font-size: 22vh;
+        font-weight: bold;
+        letter-spacing: 0.12em;
+        line-height: 1;
+        margin: 0 0 3vh 0;
+      }
+      #wait .hint {
+        color: #cbd5e1;
+        font-size: 3vh;
+        line-height: 1.7;
+      }
+      #wait .hint b {
+        color: #ffffff;
+      }
+
+      /* ---------- 計分板 ---------- */
+      #board {
+        height: 100%;
+        display: none;
+        -webkit-flex-direction: column;
+        flex-direction: column;
+      }
+      #topbar {
+        height: 16%;
+        display: -webkit-flex;
+        display: flex;
+        -webkit-align-items: center;
+        align-items: center;
+        -webkit-justify-content: center;
+        justify-content: center;
+        position: relative;
+        background: #0b1220;
+        border-bottom: 1px solid #1e293b;
+      }
+      #clock {
+        font-size: 12vh;
+        font-weight: bold;
+        line-height: 1;
+      }
+      #clock.warn {
+        color: #f87171;
+      }
+      #round {
+        position: absolute;
+        left: 2vw;
+        font-size: 3.4vh;
+        color: #cbd5e1;
+      }
+      #status {
+        position: absolute;
+        right: 2vw;
+        font-size: 2.6vh;
+        color: #94a3b8;
+        text-align: right;
+      }
+      #status .bad {
+        color: #fca5a5;
+      }
+
+      #sides {
+        height: 84%;
+        display: -webkit-flex;
+        display: flex;
+      }
+      .side {
+        width: 50%;
+        position: relative;
+        display: -webkit-flex;
+        display: flex;
+        -webkit-flex-direction: column;
+        flex-direction: column;
+        -webkit-justify-content: center;
+        justify-content: center;
+        -webkit-align-items: center;
+        align-items: center;
+      }
+      .side.blue {
+        background: #1d4ed8;
+      }
+      .side.red {
+        background: #b91c1c;
+      }
+      .name {
+        position: absolute;
+        top: 3%;
+        width: 92%;
+        text-align: center;
+        font-size: 5vh;
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .wins {
+        position: absolute;
+        top: 14%;
+        font-size: 4vh;
+        letter-spacing: 0.3em;
+        color: #ffffff;
+      }
+      .score {
+        font-size: 40vh;
+        font-weight: bold;
+        line-height: 0.9;
+      }
+      .gj {
+        position: absolute;
+        bottom: 4%;
+        font-size: 4vh;
+        color: #ffffff;
+      }
+      .gj .num {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="wait">
+        <div class="brand">TEAMPRO 跆拳道計分</div>
+        <div class="label">房間代碼</div>
+        <div id="code">------</div>
+        <div class="hint">
+          請在手機開啟 <b id="site">—</b><br />
+          點「手機主控」後輸入上面的房間代碼
+        </div>
+        <div class="hint" style="margin-top: 3vh; font-size: 2.4vh; color: #94a3b8">
+          <span id="conn">連線中…</span>　·　本系統供訓練賽及模擬賽使用，非 WT 認證競賽設備
+        </div>
+      </div>
+
+      <div id="board">
+        <div id="topbar">
+          <div id="round">第 1 回合</div>
+          <div id="clock">0:00</div>
+          <div id="status"></div>
+        </div>
+        <div id="sides">
+          <div class="side blue">
+            <div class="name" id="blueName">藍方</div>
+            <div class="wins" id="blueWins"></div>
+            <div class="score" id="blueScore">0</div>
+            <div class="gj">Gam-jeom <span class="num" id="blueGj">0</span></div>
+          </div>
+          <div class="side red">
+            <div class="name" id="redName">紅方</div>
+            <div class="wins" id="redWins"></div>
+            <div class="score" id="redScore">0</div>
+            <div class="gj">Gam-jeom <span class="num" id="redGj">0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* eslint-disable */
+      ;(function () {
+        'use strict'
+
+        var SUPABASE_URL = '%VITE_SUPABASE_URL%'
+        var SUPABASE_KEY = '%VITE_SUPABASE_ANON_KEY%'
+
+        /* ---------- 房間代碼 ---------- */
+        // 與主程式一致：6 碼，去掉容易看錯的 0/O/1/I
+        var ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+        function randomCode() {
+          var s = ''
+          for (var i = 0; i < 6; i++) {
+            s += ALPHABET.charAt(Math.floor(Math.random() * ALPHABET.length))
+          }
+          return s
+        }
+
+        function readCodeFromUrl() {
+          var m = window.location.search.match(/[?&]room=([A-Za-z0-9]{6})/)
+          if (m) return m[1].toUpperCase()
+          var h = window.location.hash.replace('#', '')
+          if (/^[A-Za-z0-9]{6}$/.test(h)) return h.toUpperCase()
+          return null
+        }
+
+        var roomCode = readCodeFromUrl() || randomCode()
+        var deviceId = 'tv-' + Math.random().toString(36).slice(2, 10)
+
+        document.getElementById('code').innerHTML = roomCode
+        var site = window.location.host + window.location.pathname.replace(/tv\.html$/, '')
+        document.getElementById('site').innerHTML = site.replace(/\/$/, '')
+
+        /* ---------- 時鐘校正（與主程式 src/room/clock.ts 同一套） ---------- */
+        var clockOffset = null
+
+        function applyOffsetSample(sentAt, receivedAt) {
+          var sample = sentAt - receivedAt
+          if (clockOffset === null) {
+            clockOffset = sample
+            return
+          }
+          if (Math.abs(sample - clockOffset) >= 2000) {
+            clockOffset = sample
+            return
+          }
+          clockOffset = clockOffset + (sample - clockOffset) * 0.25
+        }
+
+        function hostNow() {
+          return new Date().getTime() + (clockOffset === null ? 0 : clockOffset)
+        }
+
+        /* ---------- 計時器（與主程式 src/timer/timer.ts 同一套） ---------- */
+        function computeRemainingMs(timer, now) {
+          if (!timer) return 0
+          if (timer.timerStatus !== 'RUNNING' || timer.timerStartedAt === null) {
+            return Math.max(0, timer.remainingMsAtStart)
+          }
+          return Math.max(0, timer.remainingMsAtStart - (now - timer.timerStartedAt))
+        }
+
+        function formatClock(ms) {
+          if (ms < 0) ms = 0
+          if (ms < 10000) {
+            return Math.floor(ms / 1000) + '.' + Math.floor((ms % 1000) / 100)
+          }
+          var total = Math.ceil(ms / 1000)
+          var mm = Math.floor(total / 60)
+          var ss = total % 60
+          return mm + ':' + (ss < 10 ? '0' + ss : '' + ss)
+        }
+
+        var STATUS_TEXT = {
+          READY: '尚未開始',
+          RUNNING: '比賽進行中',
+          PAUSED: '已暫停',
+          REST: '休息中',
+          FINISHED: '比賽結束',
+        }
+
+        /* ---------- 畫面 ---------- */
+        var snapshot = null
+        var lastStateAt = 0
+        var el = {
+          wait: document.getElementById('wait'),
+          board: document.getElementById('board'),
+          conn: document.getElementById('conn'),
+          round: document.getElementById('round'),
+          clock: document.getElementById('clock'),
+          status: document.getElementById('status'),
+          blueName: document.getElementById('blueName'),
+          redName: document.getElementById('redName'),
+          blueScore: document.getElementById('blueScore'),
+          redScore: document.getElementById('redScore'),
+          blueGj: document.getElementById('blueGj'),
+          redGj: document.getElementById('redGj'),
+          blueWins: document.getElementById('blueWins'),
+          redWins: document.getElementById('redWins'),
+        }
+
+        function winsDots(count, needed) {
+          var s = ''
+          for (var i = 0; i < needed; i++) s += i < count ? '●' : '○'
+          return s
+        }
+
+        function render() {
+          if (!snapshot) return
+          var m = snapshot.match
+          if (!m) return
+
+          el.wait.style.display = 'none'
+          el.board.style.display = 'flex'
+
+          var remaining = computeRemainingMs(m.timer, hostNow())
+          el.clock.innerHTML = formatClock(remaining)
+          if (remaining <= 10000 && m.matchStatus === 'RUNNING') {
+            el.clock.className = 'warn'
+          } else {
+            el.clock.className = ''
+          }
+
+          el.round.innerHTML = '第 ' + m.currentRound + ' 回合'
+
+          var connected = new Date().getTime() - lastStateAt < 7000
+          var statusText = STATUS_TEXT[m.matchStatus] || ''
+          if (connected) {
+            el.status.innerHTML = statusText + '<br>房間 ' + roomCode
+          } else {
+            el.status.innerHTML = '<span class="bad">主控端未連線</span><br>顯示最後正式比分'
+          }
+
+          var cfg = m.config || {}
+          var sc = m.scores || {}
+          var wins = m.roundWins || { blue: 0, red: 0 }
+          var needed = Math.floor((cfg.totalRounds || 3) / 2) + 1
+
+          el.blueName.innerHTML = cfg.blueName || '藍方'
+          el.redName.innerHTML = cfg.redName || '紅方'
+          el.blueScore.innerHTML = sc.blueScore || 0
+          el.redScore.innerHTML = sc.redScore || 0
+          el.blueGj.innerHTML = sc.blueGamjeom || 0
+          el.redGj.innerHTML = sc.redGamjeom || 0
+          el.blueWins.innerHTML = winsDots(wins.blue || 0, needed)
+          el.redWins.innerHTML = winsDots(wins.red || 0, needed)
+        }
+
+        // 計時器要自己跑，不能等廣播
+        setInterval(render, 100)
+
+        /* ---------- Supabase Realtime（原生 WebSocket，Phoenix 協定） ---------- */
+        var TOPIC = 'realtime:tp-tkd-score-lite-' + roomCode
+        var ws = null
+        var refCounter = 0
+        var heartbeatTimer = null
+        var pingTimer = null
+
+        function nextRef() {
+          refCounter++
+          return '' + refCounter
+        }
+
+        function setConn(text) {
+          if (el.conn) el.conn.innerHTML = text
+        }
+
+        function send(obj) {
+          if (ws && ws.readyState === 1) {
+            try {
+              ws.send(JSON.stringify(obj))
+            } catch (e) {}
+          }
+        }
+
+        function sendPresence(type) {
+          send({
+            topic: TOPIC,
+            event: 'broadcast',
+            payload: {
+              type: 'broadcast',
+              event: 'room',
+              payload: { type: type, deviceId: deviceId, role: 'DISPLAY', judgeSeat: null },
+            },
+            ref: nextRef(),
+          })
+        }
+
+        function connect() {
+          if (SUPABASE_URL.indexOf('http') !== 0) {
+            setConn('尚未設定雲端連線')
+            return
+          }
+          var url =
+            SUPABASE_URL.replace(/^https/, 'wss') +
+            '/realtime/v1/websocket?apikey=' +
+            SUPABASE_KEY +
+            '&vsn=1.0.0'
+
+          setConn('連線中…')
+          try {
+            ws = new WebSocket(url)
+          } catch (e) {
+            setConn('這台電視的瀏覽器不支援連線')
+            return
+          }
+
+          ws.onopen = function () {
+            var joinRef = nextRef()
+            send({
+              topic: TOPIC,
+              event: 'phx_join',
+              payload: {
+                config: { broadcast: { self: false }, presence: { key: '' }, private: false },
+              },
+              ref: joinRef,
+              join_ref: joinRef,
+            })
+            heartbeatTimer = setInterval(function () {
+              send({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: nextRef() })
+            }, 25000)
+          }
+
+          ws.onmessage = function (e) {
+            var msg
+            try {
+              msg = JSON.parse(e.data)
+            } catch (err) {
+              return
+            }
+
+            if (msg.event === 'phx_reply') {
+              if (msg.payload && msg.payload.status === 'ok') {
+                setConn('已連線，等待主控端')
+                sendPresence('HELLO')
+                if (pingTimer) clearInterval(pingTimer)
+                pingTimer = setInterval(function () {
+                  sendPresence('PING')
+                }, 2000)
+              }
+              return
+            }
+
+            if (msg.event !== 'broadcast') return
+            var body = msg.payload && msg.payload.payload
+            if (!body || body.type !== 'STATE' || !body.snapshot) return
+
+            snapshot = body.snapshot
+            var received = new Date().getTime()
+            lastStateAt = received
+            applyOffsetSample(body.snapshot.sentAt, received)
+            render()
+          }
+
+          ws.onclose = function () {
+            setConn('連線中斷，重新連線中…')
+            if (heartbeatTimer) clearInterval(heartbeatTimer)
+            if (pingTimer) clearInterval(pingTimer)
+            setTimeout(connect, 3000)
+          }
+
+          ws.onerror = function () {
+            setConn('連線發生問題')
+          }
+        }
+
+        connect()
+      })()
+    </script>
+  </body>
+</html>

@@ -139,6 +139,11 @@ function TvDisplay({ roomCode }: { roomCode: string }): React.ReactElement {
             <LocalModeWarning />
           </div>
         )}
+        <p className="mx-auto w-full max-w-3xl rounded-lg border border-line bg-panel p-3 text-center text-xs text-slate-400">
+          電視內建瀏覽器打開這頁<b className="text-slate-200">沒有樣式、只剩純文字</b>嗎？
+          那是瀏覽器太舊看不懂本頁的 CSS。請改開相容版：
+          <b className="text-slate-200">{shortHostUrl()}/tv.html</b>
+        </p>
         <div className="mx-auto w-full max-w-3xl">
           <NonCertifiedNotice />
         </div>

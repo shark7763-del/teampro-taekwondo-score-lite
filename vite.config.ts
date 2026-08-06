@@ -54,6 +54,16 @@ export default defineConfig(({ command }) => ({
       devOptions: { enabled: false },
     }),
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        // 電視相容版：獨立入口，不進 React bundle。
+        // Vite 會替換裡面的 %VITE_SUPABASE_*%，所以金鑰不必寫死在原始碼裡。
+        tv: 'tv.html',
+      },
+    },
+  },
   server: {
     host: true, // 讓同網段的電視／平板／裁判手機可以連進來
   },
