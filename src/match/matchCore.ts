@@ -19,6 +19,7 @@ import {
   createId,
   EMPTY_SCORES,
   findLastReversibleEvent,
+  hasNegativeScore,
   isGamjeomLimitReached,
   isPointGapReached,
   resolveGamjeom,
@@ -141,6 +142,18 @@ function reject(state: MatchState, reason: CommandRejection): CommandResult {
 function withEvent(state: MatchState, event: MatchEvent, now: number): CommandResult {
   const events = [...state.events, event]
   const scores = computeRoundScores(events, state.currentRound)
+
+  /*
+   * 「分數不會是負數」在這裡保證，而不是在累加時截斷。
+   *
+   * 截斷會讓復原失去可逆性（見 ruleEngine.addPoints 的說明）。
+   * 改成在指令邊界拒絕之後，事件列表裡永遠不會出現造成負分的事件，
+   * 重播因此永遠精確，畫面也永遠不會出現負數。
+   *
+   * 會走到這裡的情況：手動扣分扣過頭，或復原一筆早期得分而中間已經扣過分。
+   */
+  if (hasNegativeScore(scores)) return reject(state, 'WOULD_GO_NEGATIVE')
+
   const next: MatchState = { ...state, events, scores, updatedAt: now }
 
   const ruleCode = state.config.ruleSetCode

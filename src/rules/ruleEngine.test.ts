@@ -9,6 +9,7 @@ import {
   computeScores,
   EMPTY_SCORES,
   findLastReversibleEvent,
+  hasNegativeScore,
   isGamjeomLimitReached,
   isPointGapReached,
   isWithinLastSeconds,
@@ -508,7 +509,12 @@ describe('復原與手動修正', () => {
     })
   })
 
-  it('分數不會低於 0', () => {
+  /*
+   * 事件套用刻意是精確算術，不在這一層截斷。
+   * 截斷會讓「套用事件 → 套用它的 REVERSAL」無法回到原狀態，
+   * 被截掉的差額永遠找不回來。「分數不為負」改由 matchCore 在指令邊界保證。
+   */
+  it('事件套用是精確算術，不截斷；負值由 hasNegativeScore 偵測', () => {
     const e = scoreEvent('BLUE', 'BODY_PUNCH')
     const r = buildReversalEvent([e], e.id, {
       source: 'OPERATOR',
@@ -517,7 +523,24 @@ describe('復原與手動修正', () => {
       remainingMsAtEvent: 0,
     })
     if (!r.ok) throw new Error('unexpected')
-    const doubleReversal = [...[e, r.event], { ...r.event, id: 'x', reversedEventId: 'other' }]
-    expect(scoresOf(doubleReversal).blueScore).toBe(0)
+    // 人工偽造第二筆復原（正常流程不可能，同一筆只能復原一次）
+    const doubleReversal = [e, r.event, { ...r.event, id: 'x', reversedEventId: 'other' }]
+    const scores = scoresOf(doubleReversal)
+
+    expect(scores.blueScore).toBe(-1)
+    expect(hasNegativeScore(scores)).toBe(true)
+    expect(hasNegativeScore(scoresOf([e]))).toBe(false)
+  })
+
+  it('復原可逆：套用事件再復原，分數與原本完全相同', () => {
+    const e = scoreEvent('BLUE', 'HEAD_KICK')
+    const r = buildReversalEvent([e], e.id, {
+      source: 'OPERATOR',
+      createdBy: 'op',
+      now: NOW,
+      remainingMsAtEvent: 0,
+    })
+    if (!r.ok) throw new Error('unexpected')
+    expect(scoresOf([e, r.event])).toEqual(scoresOf([]))
   })
 })

@@ -181,3 +181,5 @@ export type RejectionReason =
   | 'NOT_LAST_10_SECONDS'
   | 'ALREADY_REVERSED'
   | 'NO_BASE_KICK_FOR_TURNING_BONUS'
+  /** 該操作會讓分數或 Gam-jeom 次數變成負數，一律拒絕且不留下事件 */
+  | 'WOULD_GO_NEGATIVE'

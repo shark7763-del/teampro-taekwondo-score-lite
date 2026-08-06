@@ -18,7 +18,14 @@ export function computeRemainingMs(timer: TimerSnapshot, now: number): number {
   if (timer.timerStatus !== 'RUNNING' || timer.timerStartedAt === null) {
     return clampMs(timer.remainingMsAtStart)
   }
-  const elapsed = now - timer.timerStartedAt
+  /*
+   * elapsed 夾在 0 以上。
+   *
+   * 跨裝置模式下 now 是「本機時間 + 估算的時鐘差」，時鐘校正只要略微高估，
+   * now 就會早於 timerStartedAt，elapsed 變負數，剩餘時間會算出**比回合長度還大**的值，
+   * 電視上會看到超過回合時間的秒數。夾住之後最差情況只是慢個幾十毫秒才開始倒數。
+   */
+  const elapsed = Math.max(0, now - timer.timerStartedAt)
   return clampMs(timer.remainingMsAtStart - elapsed)
 }
 

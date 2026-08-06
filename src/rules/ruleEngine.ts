@@ -272,14 +272,34 @@ export function applyEventToScores(scores: Scores, event: MatchEvent): Scores {
   return next
 }
 
+/*
+ * ⚠️ 這裡刻意**不**夾在 0 以上。
+ *
+ * 之前寫成 Math.max(0, ...) 看似安全，實際上破壞了事件溯源最重要的性質：
+ * 套用一筆事件再套用它的 REVERSAL，必須回到完全相同的狀態。
+ * 一旦在累加時截斷，被截掉的差額就永遠找不回來——
+ * 例如藍方 2 分時手動扣 3 分會被截成 0（實際只扣到 2），
+ * 再復原那筆 +3 就變成 3 分，憑空多一分。
+ *
+ * 「分數不會是負數」改由 matchCore 在**指令邊界**保證：
+ * 任何會讓分數變成負數的指令一律拒絕，不留下事件。
+ * 這樣重播永遠精確，而且畫面也永遠不會出現負數。
+ */
 function addPoints(scores: Scores, side: AthleteSide, delta: number): void {
-  if (side === 'BLUE') scores.blueScore = Math.max(0, scores.blueScore + delta)
-  else scores.redScore = Math.max(0, scores.redScore + delta)
+  if (side === 'BLUE') scores.blueScore += delta
+  else scores.redScore += delta
 }
 
 function addGamjeom(scores: Scores, side: AthleteSide, delta: number): void {
-  if (side === 'BLUE') scores.blueGamjeom = Math.max(0, scores.blueGamjeom + delta)
-  else scores.redGamjeom = Math.max(0, scores.redGamjeom + delta)
+  if (side === 'BLUE') scores.blueGamjeom += delta
+  else scores.redGamjeom += delta
+}
+
+/** 是否有任何一項為負。指令邊界用它擋掉會造成負分的操作。 */
+export function hasNegativeScore(scores: Scores): boolean {
+  return (
+    scores.blueScore < 0 || scores.redScore < 0 || scores.blueGamjeom < 0 || scores.redGamjeom < 0
+  )
 }
 
 /** 由完整事件列表重算分數。斷線重連後一律用此函式覆蓋本機狀態。 */
@@ -377,12 +397,20 @@ export function resolveRoundOutcome(
 
   // 1. Gam-jeom 達上限
   const limit = rules.round.gamjeomLimitPerRound
-  if (scores.blueGamjeom >= limit && scores.redGamjeom < limit) {
-    return { winner: 'RED', reason: 'GAMJEOM_LIMIT', scores }
+  const blueOver = scores.blueGamjeom >= limit
+  const redOver = scores.redGamjeom >= limit
+  if (blueOver && redOver) {
+    /*
+     * 雙方在同一回合都達到上限。
+     *
+     * WT 規則對這個情況沒有明文（`officialSourceVerified: false`，見 program.md 待確認項 2），
+     * 而先前的寫法會靜默落到「比分數」，等於**整條 Gam-jeom 上限規則被忽略**。
+     * 依本系統一貫原則：規則沒說的事不自己猜，交給教練依優勢判定。
+     */
+    return { winner: null, reason: null, scores }
   }
-  if (scores.redGamjeom >= limit && scores.blueGamjeom < limit) {
-    return { winner: 'BLUE', reason: 'GAMJEOM_LIMIT', scores }
-  }
+  if (blueOver) return { winner: 'RED', reason: 'GAMJEOM_LIMIT', scores }
+  if (redOver) return { winner: 'BLUE', reason: 'GAMJEOM_LIMIT', scores }
 
   // 2. 分數
   if (scores.blueScore !== scores.redScore) {

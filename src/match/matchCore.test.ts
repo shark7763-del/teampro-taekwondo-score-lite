@@ -129,12 +129,20 @@ describe('比賽狀態機（單機模式核心）', () => {
         .rejected,
     ).toBe('INVALID_COMMAND')
 
-    const ok = reduceMatch(
+    // 先得分才扣得下去：扣到負數會被指令邊界擋掉（見「不得讓分數變成負數」）
+    const scored = reduceMatch(
       state,
+      { type: 'SCORE', side: 'BLUE', action: 'HEAD_KICK' },
+      T0 + 500,
+    ).state
+    const ok = reduceMatch(
+      scored,
       { type: 'MANUAL_ADJUST', side: 'BLUE', deltaPoints: -2, note: '誤判補正' },
       T0 + 1_000,
     )
-    expect(ok.state.events[0]?.note).toBe('誤判補正')
+    expect(ok.rejected).toBeUndefined()
+    expect(ok.state.events[1]?.note).toBe('誤判補正')
+    expect(ok.state.scores.blueScore).toBe(1)
   })
 
   it('回合時間到：中間回合進入休息，且分數歸零重新計算', () => {

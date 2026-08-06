@@ -5,6 +5,7 @@ import { canAcceptScore, reduceMatch } from '../match/matchCore'
 import { submitJudgePress, type JudgePress } from '../pairing/pairingEngine'
 import { getRuleSet } from '../rules/ruleSets'
 import { computeRemainingMs } from '../timer/timer'
+import { beep, unlockAudio, vibrate } from '../lib/feedback'
 import { createRoomChannel, expectedTransport, type RoomChannel } from './roomChannel'
 import type { RoomTransport } from './roomChannel'
 import { loadRoom, saveRoom, getDeviceId } from './roomStorage'
@@ -91,6 +92,8 @@ export function useRoomHost(roomCode: string): RoomHostApi {
   }, [send])
 
   const dispatch = useCallback((command: MatchCommand) => {
+    // 瀏覽器的自動播放限制：必須在使用者操作中初始化 AudioContext
+    unlockAudio()
     setState((current) => {
       if (current === null) return current
       const result = reduceMatch(current, command, Date.now())
@@ -221,6 +224,44 @@ export function useRoomHost(roomCode: string): RoomHostApi {
     const id = window.setInterval(broadcast, STATE_HEARTBEAT_MS)
     return () => window.clearInterval(id)
   }, [broadcast])
+
+  /*
+   * 計分與回合結束的觸覺／聽覺回饋。
+   *
+   * 單機模式一直都有，房間模式先前完全沒有——但主控端更需要：
+   * 教練在現場眼睛是盯著比賽而不是手機，只能靠手感與聲音確認「這一下記到了」。
+   *
+   * 刻意寫成觀察 state 的 effect，而不是塞進 dispatch 的 setState 更新函式裡：
+   * 更新函式必須是純的，StrictMode 會重複呼叫它，音效會放兩次。
+   */
+  const lastEventIdRef = useRef<string | null>(null)
+  const lastStatusRef = useRef<MatchState['matchStatus'] | null>(null)
+  useEffect(() => {
+    if (state === null) return
+    const sound = state.config.soundEnabled
+    const vibration = state.config.vibrationEnabled
+    // 第一次觀察到狀態（例如重新整理後載入既有比賽）不補放歷史事件的音效
+    const firstObservation = lastStatusRef.current === null
+
+    const last = state.events.length > 0 ? state.events[state.events.length - 1] : undefined
+    const lastId = last?.id ?? null
+    if (!firstObservation && lastId !== null && lastId !== lastEventIdRef.current) {
+      vibrate(last?.type === 'SCORE' ? 'press' : 'confirmed', vibration)
+      beep('score', sound)
+    }
+    lastEventIdRef.current = lastId
+
+    if (!firstObservation && state.matchStatus !== lastStatusRef.current) {
+      if (state.matchStatus === 'FINISHED') {
+        beep('matchEnd', sound)
+        vibrate('roundEnd', vibration)
+      } else if (state.matchStatus === 'REST') {
+        beep('roundEnd', sound)
+        vibrate('roundEnd', vibration)
+      }
+    }
+    lastStatusRef.current = state.matchStatus
+  }, [state])
 
   /*
    * 回合時間到。

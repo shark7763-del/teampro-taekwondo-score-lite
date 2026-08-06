@@ -228,17 +228,15 @@ describe('不變式｜回合判定', () => {
 
 describe('不變式｜計時器', () => {
   /*
-   * ⚠️ 已知缺陷（BUG-6，待人類確認後修正，因為 timer.ts 是鎖定檔）：
-   * elapsed 為負數時（now 早於 timerStartedAt），computeRemainingMs 會回傳
-   * 比回合長度更大的值。跨裝置模式下時鐘校正若略微高估就會發生，
-   * 電視上會短暫顯示超過回合長度的秒數。
-   * 這裡先把性質限縮在目前確實成立的定義域（now >= timerStartedAt）。
+   * elapsed 允許為負：跨裝置模式下 now 是「本機時間 + 估算時鐘差」，
+   * 校正略微高估時 now 會早於 timerStartedAt。
+   * 這正是 BUG-6 —— 修正前會回傳比回合長度更大的值，電視上看得到。
    */
-  it('剩餘時間永遠不為負，且不超過起算時的長度', () => {
+  it('剩餘時間永遠不為負，且不超過起算時的長度（含時鐘校正過頭的情況）', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 600_000 }),
-        fc.integer({ min: 0, max: 900_000 }),
+        fc.integer({ min: -30_000, max: 900_000 }),
         (duration, elapsed) => {
           const timer = startTimer(createTimer(duration), T0)
           const remaining = computeRemainingMs(timer, T0 + elapsed)
