@@ -66,6 +66,18 @@ async function scoreThenWaitForRoundEnd(user: ReturnType<typeof userEvent.setup>
     interval: 100,
   })
   expect(screen.queryByText('比賽進行中')).not.toBeInTheDocument()
+
+  /*
+   * 回合結束後比分**不可以**直接歸零。
+   *
+   * 規則層確實會把 currentRound 推到下一回合並歸零（每回合獨立計算，正確），
+   * 但顯示層必須亮出剛打完那一回合的結果——
+   * 否則教練與選手根本沒看到剛才打了幾比幾。2026-08-08 現場回報。
+   */
+  for (const board of screen.getAllByLabelText('藍方分數')) {
+    expect(board).toHaveTextContent('3')
+  }
+  expect(screen.getAllByLabelText('回合結果').length).toBeGreaterThan(0)
 }
 
 describe('黃金｜單機與房間模式行為一致', () => {

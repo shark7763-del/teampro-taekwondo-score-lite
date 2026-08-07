@@ -179,6 +179,49 @@
       .gj .num {
         font-weight: bold;
       }
+
+      /* 回合結果橫幅：回合打完時把比分留在畫面上，不要默默歸零 */
+      #result {
+        display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 17%;
+        text-align: center;
+        z-index: 5;
+      }
+      #result .inner {
+        display: inline-block;
+        background: #f59e0b;
+        color: #1c1207;
+        font-size: 4.2vh;
+        font-weight: bold;
+        padding: 1vh 3vh;
+        border-radius: 1vh;
+      }
+      #result .next {
+        display: block;
+        font-size: 2.6vh;
+        font-weight: normal;
+      }
+
+      /* 音效開關：低調放在角落，遙控器方向鍵可以選到 */
+      #sound {
+        position: absolute;
+        left: 1.5vw;
+        bottom: 1.5vh;
+        z-index: 10;
+        background: #1e293b;
+        color: #cbd5e1;
+        border: 1px solid #334155;
+        border-radius: 0.8vh;
+        font-size: 2.2vh;
+        padding: 0.8vh 1.6vh;
+        cursor: pointer;
+      }
+      #sound:focus {
+        outline: 3px solid #ffffff;
+      }
     </style>
   </head>
   <body>
@@ -202,6 +245,7 @@
           <div id="clock">0:00</div>
           <div id="status"></div>
         </div>
+        <div id="result"><span class="inner" id="resultText"></span></div>
         <div id="sides">
           <div class="side blue">
             <div class="name" id="blueName">藍方</div>
@@ -217,6 +261,8 @@
           </div>
         </div>
       </div>
+
+      <button id="sound" type="button">🔊 提示音：開</button>
     </div>
 
     <script>
@@ -302,6 +348,124 @@
           FINISHED: '比賽結束',
         }
 
+        var REASON_TEXT = {
+          POINTS: '分數領先',
+          TURNING_POINTS: '旋轉技術得分較多',
+          HIGHER_TECHNIQUE: '高分值技術較多',
+          FEWER_GAMJEOM: 'Gam-jeom 較少',
+          GAMJEOM_LIMIT: '對手 Gam-jeom 達上限',
+          POINT_GAP: '分差達門檻',
+          SUPERIORITY: '優勢判定',
+        }
+
+        /*
+         * 顯示推導（與主程式 src/match/displayView.ts 同一套判斷）。
+         *
+         * 回合一結束，規則層就會把 currentRound 推到下一回合、scores 歸零，
+         * 那是正確的（每回合分數獨立計算）。但畫面若照實顯示，
+         * 剛打完那一回合的比分會連看都沒看到就變成 0:0。
+         * 所以休息中要亮出剛結束那一回合的結果。
+         */
+        function scoreboardView(m) {
+          var results = m.roundResults || []
+          var last = results.length > 0 ? results[results.length - 1] : null
+
+          if (m.matchStatus === 'REST' && last) {
+            return {
+              scores: {
+                blueScore: last.blueScore,
+                redScore: last.redScore,
+                blueGamjeom: last.blueGamjeom,
+                redGamjeom: last.redGamjeom,
+              },
+              round: last.round,
+              finished: last,
+              nextRound: m.currentRound,
+            }
+          }
+          if (m.matchStatus === 'FINISHED') {
+            return {
+              scores: m.scores || {},
+              round: m.currentRound,
+              finished: last,
+              nextRound: null,
+            }
+          }
+          return { scores: m.scores || {}, round: m.currentRound, finished: null, nextRound: null }
+        }
+
+        /* ---------- 提示音 ---------- */
+        var SOUND_KEY = 'tp-tkd-tv-sound'
+        var soundOn = true
+        try {
+          soundOn = window.localStorage.getItem(SOUND_KEY) !== 'off'
+        } catch (e) {}
+
+        var audioCtx = null
+
+        function getCtx() {
+          var Ctor = window.AudioContext || window.webkitAudioContext
+          if (!Ctor) return null
+          try {
+            if (!audioCtx) audioCtx = new Ctor()
+            if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume()
+            return audioCtx
+          } catch (e) {
+            return null
+          }
+        }
+
+        function tone(freq, durationMs, repeat) {
+          if (!soundOn) return
+          var ctx = getCtx()
+          if (!ctx) return
+          for (var i = 0; i < repeat; i++) {
+            var startAt = ctx.currentTime + (i * (durationMs + 110)) / 1000
+            try {
+              var osc = ctx.createOscillator()
+              var gain = ctx.createGain()
+              osc.type = 'sine'
+              osc.frequency.value = freq
+              gain.gain.setValueAtTime(0.0001, startAt)
+              gain.gain.exponentialRampToValueAtTime(0.3, startAt + 0.01)
+              gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durationMs / 1000)
+              osc.connect(gain)
+              gain.connect(ctx.destination)
+              osc.start(startAt)
+              osc.stop(startAt + durationMs / 1000 + 0.03)
+            } catch (e) {
+              return
+            }
+          }
+        }
+
+        function beepScore() {
+          tone(880, 90, 1)
+        }
+        function beepRoundEnd() {
+          tone(660, 420, 2)
+        }
+        function beepMatchEnd() {
+          tone(520, 520, 3)
+        }
+
+        var soundBtn = document.getElementById('sound')
+
+        function renderSoundBtn() {
+          soundBtn.innerHTML = soundOn ? '🔊 提示音：開' : '🔇 提示音：關'
+        }
+
+        soundBtn.onclick = function () {
+          soundOn = !soundOn
+          try {
+            window.localStorage.setItem(SOUND_KEY, soundOn ? 'on' : 'off')
+          } catch (e) {}
+          renderSoundBtn()
+          // 按下當下就是使用者操作，趁機解除瀏覽器的自動播放限制並試音
+          if (soundOn) beepScore()
+        }
+        renderSoundBtn()
+
         /* ---------- 畫面 ---------- */
         var snapshot = null
         var lastStateAt = 0
@@ -320,6 +484,29 @@
           redGj: document.getElementById('redGj'),
           blueWins: document.getElementById('blueWins'),
           redWins: document.getElementById('redWins'),
+          result: document.getElementById('result'),
+          resultText: document.getElementById('resultText'),
+        }
+
+        /* 上一次看到的狀態，用來判斷「剛剛發生了什麼」以決定要不要發聲 */
+        var prevEventId = null
+        var prevStatus = null
+
+        function playFeedback(m) {
+          var events = m.events || []
+          var lastEvent = events.length > 0 ? events[events.length - 1] : null
+          var lastId = lastEvent ? lastEvent.id : null
+          // 第一次收到狀態不補放歷史事件的音效
+          var first = prevStatus === null
+
+          if (!first && lastId && lastId !== prevEventId) beepScore()
+          prevEventId = lastId
+
+          if (!first && m.matchStatus !== prevStatus) {
+            if (m.matchStatus === 'FINISHED') beepMatchEnd()
+            else if (m.matchStatus === 'REST') beepRoundEnd()
+          }
+          prevStatus = m.matchStatus
         }
 
         function winsDots(count, needed) {
@@ -344,7 +531,13 @@
             el.clock.className = ''
           }
 
-          el.round.innerHTML = '第 ' + m.currentRound + ' 回合'
+          var view = scoreboardView(m)
+
+          el.round.innerHTML =
+            '第 ' +
+            view.round +
+            ' 回合' +
+            (view.finished ? '<span style="color:#fbbf24"> 結果</span>' : '')
 
           var connected = new Date().getTime() - lastStateAt < 7000
           var statusText = STATUS_TEXT[m.matchStatus] || ''
@@ -354,8 +547,23 @@
             el.status.innerHTML = '<span class="bad">主控端未連線</span><br>顯示最後正式比分'
           }
 
+          // 回合結果橫幅：把「幾比幾、誰贏、為什麼」留在畫面上，而不是讓比分默默歸零
+          if (view.finished) {
+            var f = view.finished
+            var who =
+              f.winner === null ? '本回合平手' : (f.winner === 'BLUE' ? '藍方' : '紅方') + '勝'
+            var why = f.reason && REASON_TEXT[f.reason] ? '（' + REASON_TEXT[f.reason] + '）' : ''
+            var next = view.nextRound
+              ? '<span class="next">休息後進行第 ' + view.nextRound + ' 回合</span>'
+              : ''
+            el.resultText.innerHTML = who + why + next
+            el.result.style.display = 'block'
+          } else {
+            el.result.style.display = 'none'
+          }
+
           var cfg = m.config || {}
-          var sc = m.scores || {}
+          var sc = view.scores
           var wins = m.roundWins || { blue: 0, red: 0 }
           var needed = Math.floor((cfg.totalRounds || 3) / 2) + 1
 
@@ -472,6 +680,8 @@
             var received = new Date().getTime()
             lastStateAt = received
             applyOffsetSample(body.snapshot.sentAt, received)
+            // 音效只在真的收到新狀態時判斷，不能放在每 100ms 的 render 裡
+            if (snapshot.match) playFeedback(snapshot.match)
             render()
           }
 

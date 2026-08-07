@@ -2,7 +2,8 @@ import type { AthleteSide, MatchState } from '../types'
 import { formatClock } from '../timer/timer'
 import { getRuleSet } from '../rules/ruleSets'
 import type { FlashEvent } from '../hooks/useSoloMatch'
-import { opponentOf, roundWinsNeeded } from '../rules/ruleEngine'
+import { opponentOf, roundReasonLabel, roundWinsNeeded, sideLabel } from '../rules/ruleEngine'
+import { scoreboardView } from '../match/displayView'
 
 interface ScoreboardProps {
   state: MatchState
@@ -37,7 +38,12 @@ export function Scoreboard({
   compact = false,
   onToggleTimer,
 }: ScoreboardProps): React.ReactElement {
-  const { config, scores, currentRound, matchStatus } = state
+  const { config, matchStatus } = state
+  /*
+   * 休息中不能顯示 state.scores——那時候它已經是下一回合的 0:0，
+   * 剛打完那一回合的比分會連看都沒看到就消失。改由顯示層推導。
+   */
+  const { scores, round: currentRound, finishedRound, nextRound } = scoreboardView(state)
   const rules = getRuleSet(config.ruleSetCode)
   const winsNeeded = roundWinsNeeded(config.totalRounds, config.ruleSetCode)
   const isLast10Window = remainingMs > 0 && remainingMs <= rules.gamjeom.lastSecondsWindowMs
@@ -70,6 +76,7 @@ export function Scoreboard({
         <div className="flex flex-col items-center justify-center gap-[1vh] border-x-2 border-line bg-panel px-2">
           <div className="text-center text-[clamp(0.7rem,2.2vh,1.2rem)] font-semibold tracking-widest text-slate-400">
             第 {currentRound} 回合
+            {finishedRound !== null && <span className="ml-1 text-amber-300">結果</span>}
             <span className="ml-1 text-slate-500">（{winsNeeded} 勝制）</span>
           </div>
           {onToggleTimer === undefined ? (
@@ -109,6 +116,27 @@ export function Scoreboard({
           >
             {STATUS_LABEL[matchStatus]}
           </div>
+
+          {/* 回合結束時把「誰贏了這一回合、為什麼」講清楚，而不是讓比分默默歸零 */}
+          {finishedRound !== null && (
+            <div
+              className="rounded-lg bg-amber-400/15 px-[1.5vh] py-[0.6vh] text-center text-[clamp(0.65rem,2.2vh,1.2rem)] font-bold text-amber-200"
+              aria-label="回合結果"
+            >
+              {finishedRound.winner === null
+                ? '本回合平手'
+                : `${sideLabel(finishedRound.winner)}勝`}
+              {finishedRound.reason !== null && (
+                <span className="ml-1 font-normal opacity-80">
+                  （{roundReasonLabel(finishedRound.reason)}）
+                </span>
+              )}
+              {nextRound !== null && (
+                <div className="font-normal text-amber-200/80">休息後進行第 {nextRound} 回合</div>
+              )}
+            </div>
+          )}
+
           {statusSlot}
         </div>
 
