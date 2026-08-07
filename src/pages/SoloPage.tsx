@@ -9,7 +9,7 @@ import { ActionButton } from '../components/ui'
 import { useNow } from '../hooks/useNow'
 import { useFullscreen, useWakeLock } from '../hooks/useFullscreen'
 import { useSoloMatch } from '../hooks/useSoloMatch'
-import { canAcceptScore, type CommandRejection } from '../match/matchCore'
+import { canAcceptScore } from '../match/matchCore'
 import {
   describeEvent,
   findLastReversibleEvent,
@@ -22,19 +22,10 @@ import {
 import { getRuleSet } from '../rules/ruleSets'
 import { computeRemainingMs } from '../timer/timer'
 import { beep, vibrate } from '../lib/feedback'
+import { rejectionText } from '../lib/rejectionText'
 import { loadPreferences, savePreferences, type MatchSetup } from '../storage/preferences'
 import { createBroadcastTransport } from '../sync/displaySync'
 import type { ActionType, AthleteSide, MatchState } from '../types'
-
-const REJECTION_TEXT: Record<string, string> = {
-  MATCH_FINISHED: '比賽已結束，無法計分',
-  MATCH_PAUSED: '暫停中不接受計分',
-  MATCH_NOT_RUNNING: '請先按「開始」',
-  NOT_LAST_10_SECONDS: '僅限回合最後 10 秒且比賽進行中才能使用',
-  NOTHING_TO_REVERSE: '沒有可復原的紀錄',
-  INVALID_COMMAND: '此操作目前不可執行',
-  ALREADY_REVERSED: '這筆紀錄已經復原過了',
-}
 
 /** 操作面板閒置多久後淡出（只是視覺變暗，按鍵仍然完全有效） */
 const IDLE_MS = 3_000
@@ -207,7 +198,7 @@ export function SoloPage(): React.ReactElement {
   const rejectionMessage = useMemo(() => {
     if (lastRejection === null) return null
     if (now - lastRejection.at > 2_500) return null
-    return REJECTION_TEXT[lastRejection.reason as CommandRejection] ?? '操作被拒絕'
+    return rejectionText(lastRejection.reason)
   }, [lastRejection, now])
 
   const recordToast = useMemo(() => {

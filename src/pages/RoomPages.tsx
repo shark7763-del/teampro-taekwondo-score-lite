@@ -6,17 +6,18 @@ import { SideControls } from '../components/ScoreButtons'
 import { RoundEndPanel } from '../components/RoundEndPanel'
 import { SetupPanel } from '../components/SetupPanel'
 import { QrCode } from '../components/QrCode'
-import { ActionButton, NonCertifiedNotice } from '../components/ui'
+import { ActionButton, NonCertifiedNotice, Toast } from '../components/ui'
 import { useNow } from '../hooks/useNow'
 import { useFullscreen, useWakeLock } from '../hooks/useFullscreen'
 import { useRoomHost, useRoomClient } from '../room/useRoom'
 import { createRoomConfig, generateRoomCode } from '../room/roomStorage'
 import { displayLink, judgeLink, operatorLink, shortHostUrl } from '../room/links'
 import type { RoomTransport } from '../room/roomChannel'
-import { createMatchState } from '../match/matchCore'
+import { canAcceptScore, createMatchState } from '../match/matchCore'
 import { computeRemainingMs } from '../timer/timer'
-import { findLastReversibleEvent } from '../rules/ruleEngine'
+import { findLastReversibleEvent, pointsForAction } from '../rules/ruleEngine'
 import { getRuleSet } from '../rules/ruleSets'
+import { rejectionText } from '../lib/rejectionText'
 import { loadPreferences, savePreferences } from '../storage/preferences'
 import type { ActionType, AthleteSide, JudgeSeat, PressOutcome } from '../types'
 
@@ -195,8 +196,17 @@ function TvDisplay({ roomCode }: { roomCode: string }): React.ReactElement {
 export function OperatorPage(): React.ReactElement {
   const roomCode = useRoomCode()
   const now = useNow(100)
-  const { config, state, presences, transport, ready, dispatch, initialize, updateConfig } =
-    useRoomHost(roomCode)
+  const {
+    config,
+    state,
+    presences,
+    transport,
+    ready,
+    lastRejection,
+    dispatch,
+    initialize,
+    updateConfig,
+  } = useRoomHost(roomCode)
   const [correctionMode, setCorrectionMode] = useState(false)
   const [showLinks, setShowLinks] = useState(false)
   useWakeLock(state !== null)
@@ -272,8 +282,24 @@ export function OperatorPage(): React.ReactElement {
           correctionMode={correctionMode}
           undoTarget={findLastReversibleEvent(state.events)}
           onScore={(side, action) => {
+            /*
+             * 修正模式必須送 MANUAL_ADJUST 扣分，不能送 SCORE。
+             * 先前這裡不管在不在修正模式都送 SCORE，按「−3」其實會加 3 分；
+             * 而且休息中／未開始時 SCORE 會被規則擋掉，看起來就像「按了沒反應」。
+             */
+            if (correctionMode) {
+              dispatch({
+                type: 'MANUAL_ADJUST',
+                side,
+                deltaPoints: -pointsForAction(action, state.config.ruleSetCode),
+                note: '教練現場修正',
+              })
+              // 單次修正：扣一次就自動退出，避免教練忘記自己還在扣分模式
+              setCorrectionMode(false)
+              return state.matchStatus !== 'FINISHED'
+            }
             dispatch({ type: 'SCORE', side, action, source: 'OPERATOR' })
-            return true
+            return canAcceptScore(state).ok
           }}
           onGamjeom={(side) => dispatch({ type: 'GAMJEOM', side, reason: 'OTHER', special: false })}
           onSpecialGamjeom={(side) =>
@@ -296,6 +322,10 @@ export function OperatorPage(): React.ReactElement {
         onRestart={() => dispatch({ type: 'RESTART' })}
         onDecideSuperiority={(winner) => dispatch({ type: 'DECIDE_SUPERIORITY', winner })}
       />
+
+      {lastRejection !== null && now - lastRejection.at < 2_600 && (
+        <Toast message={rejectionText(lastRejection.reason)} />
+      )}
 
       {showLinks && (
         <ConnectionSheet

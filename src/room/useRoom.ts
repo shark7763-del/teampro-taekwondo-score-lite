@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ActionType, AthleteSide, JudgeSeat, MatchState, PressOutcome } from '../types'
-import type { MatchCommand } from '../match/matchCore'
+import type { CommandRejection, MatchCommand } from '../match/matchCore'
 import { canAcceptScore, reduceMatch } from '../match/matchCore'
 import { submitJudgePress, type JudgePress } from '../pairing/pairingEngine'
 import { getRuleSet } from '../rules/ruleSets'
@@ -30,6 +30,8 @@ export interface RoomHostApi {
   transport: RoomTransport
   /** 傳輸層是否已就緒 */
   ready: boolean
+  /** 最近一次被拒絕的指令；主控端必須把它顯示出來，不可默默吞掉 */
+  lastRejection: { reason: CommandRejection; at: number } | null
   dispatch: (command: MatchCommand) => void
   /** 建立（或重建）這個房間的比賽 */
   initialize: (config: RoomConfig, match: MatchState) => void
@@ -51,6 +53,10 @@ export function useRoomHost(roomCode: string): RoomHostApi {
   const [state, setState] = useState<MatchState | null>(stored?.match ?? null)
   const [presences, setPresences] = useState<DevicePresence[]>([])
   const [ready, setReady] = useState(false)
+  const [lastRejection, setLastRejection] = useState<{
+    reason: CommandRejection
+    at: number
+  } | null>(null)
   const pressesRef = useRef<JudgePress[]>([])
 
   /*
@@ -91,17 +97,33 @@ export function useRoomHost(roomCode: string): RoomHostApi {
     send({ type: 'STATE', snapshot })
   }, [send])
 
+  /*
+   * 指令被拒絕時必須讓使用者看得到。
+   *
+   * 先前這裡只是 `return current`，等於默默吞掉——現場教練按了扣分沒反應、
+   * 不知道是被規則擋掉還是系統壞了，只會開始亂按。
+   *
+   * 因此改成先用 stateRef 算出結果再決定：被拒絕就記錄原因並震動，
+   * 被接受才更新狀態。同時立刻同步 stateRef，
+   * 讓同一個 tick 內連續 dispatch（例如快速連按）不會讀到舊狀態。
+   */
   const dispatch = useCallback((command: MatchCommand) => {
     // 瀏覽器的自動播放限制：必須在使用者操作中初始化 AudioContext
     unlockAudio()
-    setState((current) => {
-      if (current === null) return current
-      const result = reduceMatch(current, command, Date.now())
-      if (result.rejected !== undefined) return current
-      const currentConfig = configRef.current
-      if (currentConfig !== null) saveRoom(currentConfig, result.state)
-      return result.state
-    })
+    const current = stateRef.current
+    if (current === null) return
+
+    const result = reduceMatch(current, command, Date.now())
+    if (result.rejected !== undefined) {
+      setLastRejection({ reason: result.rejected, at: Date.now() })
+      vibrate('rejected', current.config.vibrationEnabled)
+      return
+    }
+
+    const currentConfig = configRef.current
+    if (currentConfig !== null) saveRoom(currentConfig, result.state)
+    stateRef.current = result.state
+    setState(result.state)
   }, [])
 
   const timeUpHandledRef = useRef('')
@@ -302,6 +324,7 @@ export function useRoomHost(roomCode: string): RoomHostApi {
     presences,
     transport: expectedTransport(),
     ready,
+    lastRejection,
     dispatch,
     initialize,
     updateConfig,
